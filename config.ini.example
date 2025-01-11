@@ -1,0 +1,54 @@
+[general]
+log_level = INFO
+log_file = myrcat.log
+database_path = myrcat.db
+timezone = US/Pacific
+
+[server]
+host = 192.168.123.106
+port = 8080
+
+[artwork]
+incoming_directory = incoming
+publish_directory = publish
+
+[web]
+playlist_path = playlist.json
+
+[lastfm]
+api_key = 
+api_secret = 
+username = 
+password = 
+
+[listenbrainz]
+token = 
+
+[facebook]
+app_id = 
+app_secret = 
+access_token = 
+page_id = 
+
+[bluesky]
+handle = 
+app_password = 
+
+[publish_exceptions]
+publish_socials = False
+
+# Disable specific services; ie: Bluesky, Facebook, LastFM, ListenBrainz - or None
+disable_services = Bluesky, Facebook
+
+# Skip lists for artists and titles - exact matches for either won't publish anything from the current Myriad payload
+skip_artists_file = skip_artists.txt
+skip_titles_file = skip_titles.txt
+
+[database]
+# SoundExchange reporting period (in days)
+reporting_period = 90
+
+# Database maintenance
+cleanup_interval = 30
+max_history = 1000
+
