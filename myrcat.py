@@ -424,6 +424,7 @@ class Myrcat:
             "urllib3.connectionpool",
         ]:
             logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.CRITICAL)  # really mute them!
             logger.disabled = True
             logger.propagate = False
             while logger.hasHandlers():
