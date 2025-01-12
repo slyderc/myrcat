@@ -266,14 +266,24 @@ class DatabaseManager:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             """
             with sqlite3.connect(self.db_path) as conn:
-                conn.execute(query, (
-                    track.artist, track.title, track.album,
-                    track.publisher, track.year, track.isrc, track.starttime,
-                    track.duration, track.media_id, track.program,
-                    track.presenter
-                ))
+                conn.execute(
+                    query,
+                    (
+                        track.artist,
+                        track.title,
+                        track.album,
+                        track.publisher,
+                        track.year,
+                        track.isrc,
+                        track.starttime,
+                        track.duration,
+                        track.media_id,
+                        track.program,
+                        track.presenter,
+                    ),
+                )
                 logging.debug(f"📈 Logged to database")
-            except Exception as e:
+        except Exception as e:
             logging.error(f"💥 Database error: {e}")
             # Add more detailed error logging
             if isinstance(e, sqlite3.OperationalError):
@@ -570,12 +580,21 @@ class Myrcat:
             return False, f"Non-numeric value error: {e}"
 
         # Check string lengths are reasonable
-        max_lens = {"artist": 256, "title": 256, "album": 256,
-                    "publisher": 256, "ISRC": 16, "program": 128,
-                    "presenter": 128}
+        max_lens = {
+            "artist": 256,
+            "title": 256,
+            "album": 256,
+            "publisher": 256,
+            "ISRC": 16,
+            "program": 128,
+            "presenter": 128,
+        }
 
-        if oversized := [f for f, max_len in max_lens.items()
-                        if track_json.get(f) and len(str(track_json[f])) > max_len]:
+        if oversized := [
+            f
+            for f, max_len in max_lens.items()
+            if track_json.get(f) and len(str(track_json[f])) > max_len
+        ]:
             return False, f"Fields exceed max length: {', '.join(oversized)}"
 
             return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
@@ -599,11 +618,11 @@ class Myrcat:
     def decode_json_data(self, data: bytes) -> Dict[str, Any]:
         """Decode and parse track data."""
         try:
-            decoded = data.decode('utf-8')
+            decoded = data.decode("utf-8")
         except UnicodeDecodeError:
-            decoded = data.decode('cp1252')
+            decoded = data.decode("cp1252")
 
-        return json.loads(decoded.replace('\\', '/'))  # Replace Windows file paths
+        return json.loads(decoded.replace("\\", "/"))  # Replace Windows file paths
 
     async def start_server(self):
         """Start the socket server."""
