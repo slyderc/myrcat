@@ -139,11 +139,11 @@ class SocialMediaManager:
             self.lastfm.scrobble(
                 artist=track.artist, title=track.title, timestamp=lastfm_timestamp
             )
-            logging.info(f"📒 Updated Last.FM")
+            logging.debug(f"📒 Updated Last.FM")
         except Exception as e:
             logging.error(f"💥 Last.FM update error: {e}")
 
-    async def update_listenbrainz(self, track: TrackInfo):
+    async def update_listenbrainz(self, track: Trackdebug):
         """Update ListenBrainz with current track."""
         if not hasattr(self, "listenbrainz"):
             return  # Service not initialized - excluded in config
@@ -155,11 +155,11 @@ class SocialMediaManager:
                 listened_at=int(time.time()),
             )
             lb_response = self.listenbrainz.submit_single_listen(lb_listen)
-            logging.info(f"📒 Updated ListenBrainz")
+            logging.debug(f"📒 Updated ListenBrainz")
         except Exception as error:
             logging.error(f"💥 Listenbrainz update error: {error}")
 
-    async def update_bluesky(self, track: TrackInfo):
+    async def update_bluesky(self, track: Trackdebug):
         """Update Bluesky with current track."""
         if not hasattr(self, "bluesky"):
             return  # Service not initialized - excluded in config
@@ -177,11 +177,11 @@ class SocialMediaManager:
             # Create post (this is synchronous - ATProto handles this internally)
             client.send_post(text=post_text)
 
-            logging.info(f"📒 Updated Bluesky")
+            logging.debug(f"📒 Updated Bluesky")
         except Exception as e:
             logging.error(f"💥 Bluesky update error: {e}")
 
-    async def update_facebook(self, track: TrackInfo):
+    async def update_facebook(self, track: Trackdebug):
         """Update Facebook page with current track."""
         if not hasattr(self, "facebook"):
             return  # Service not initialized - excluded in config
@@ -198,12 +198,12 @@ class SocialMediaManager:
             self.facebook.put_object(
                 parent_object=self.fb_page_id, connection_name="feed", message=message
             )
-            logging.info(f"📒 Updated Facebook")
+            logging.debug(f"📒 Updated Facebook")
         except Exception as e:
             logging.error(f"💥 Facebook update error: {e}")
 
-    async def update_all_platforms(self, track: TrackInfo):
-        """Update all configured social media platforms with track info."""
+    async def update_all_platforms(self, track: Trackdebug):
+        """Update all configured social media platforms with track debug."""
         if not self.publish_enabled:
             logging.debug("Social media publishing is disabled!")
             return
@@ -259,7 +259,7 @@ class DatabaseManager:
             """
             )
 
-    async def log_track(self, track: TrackInfo):
+    async def log_track(self, track: Trackdebug):
         """Log track play to database for SoundExchange reporting."""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -286,7 +286,7 @@ class DatabaseManager:
                         track.timestamp,
                     ),
                 )
-            logging.info(f"📈 Logged to database")
+            logging.debug(f"📈 Logged to database")
         except Exception as e:
             logging.error(f"💥 Database error: {e}")
             # Add more detailed error logging
@@ -319,7 +319,7 @@ class ArtworkManager:
                     # Copy file with new name
                     shutil.copy2(str(incoming_path), str(publish_path))
                     incoming_path.unlink()  # Remove original file
-                    logging.info(f"🎨 Artwork published: {new_filename}")
+                    logging.debug(f"🎨 Artwork published: {new_filename}")
                     return new_filename
                 except Exception as e:
                     logging.error(f"💥 Error processing artwork: {e}")
@@ -331,7 +331,7 @@ class ArtworkManager:
 
 
 class PlaylistManager:
-    """Manages playlist.json updates and current track information."""
+    """Manages playlist.json updates and current track debugrmation."""
 
     def __init__(self, playlist_path: Path, artwork_publish_path: Path):
         """Initialize PlaylistManager.
@@ -378,7 +378,7 @@ class PlaylistManager:
             with open(self.playlist_path, "w") as f:
                 json.dump(playlist_data, f, indent=4)
 
-            logging.info("💾 Saved new playlist file")
+            logging.debug("💾 Saved new playlist file")
 
             # Now safe to clean up old artwork files
             await self.cleanup_old_artwork()
@@ -401,7 +401,7 @@ class PlaylistManager:
                 except Exception as e:
                     logging.error(f"💥 Error removing old artwork {file.name}: {e}")
 
-            logging.info("🧼 Artwork cleanup completed")
+            logging.debug("🧼 Artwork cleanup completed")
         except Exception as e:
             logging.error(f"💥 Error during artwork cleanup: {e}")
 
@@ -486,11 +486,12 @@ class Myrcat:
                 presenter=track_data.get("presenter"),
             )
 
-            logging.info(f"🎹 {track.title}\n👨‍🎤{track.artist}\n--------------------")
+            logging.info(f"🎹 {track.title}")
+            logging.info(f"👨‍🎤 {track.artist}")
 
             # Check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
-                logging.info(f"⛔️ Skipping - filted in config!")
+                logging.debug(f"⛔️ Skipping - filted in config!")
                 return
 
             # Check for duplicate track, in case we're messing with Myriad OCP
@@ -514,7 +515,9 @@ class Myrcat:
                     delay_seconds = max(
                         1, duration - 5
                     )  # Leave at least 5s before next track
-                logging.info(f"⏱️ Delaying track processing for {delay_seconds} seconds")
+                logging.debug(
+                    f"⏱️ Delaying track processing for {delay_seconds} seconds"
+                )
                 await asyncio.sleep(delay_seconds)
 
             # Process artwork
