@@ -610,7 +610,7 @@ class Myrcat:
                 track_data = self.decode_json_data(data)
 
                 # Validate track data
-                is_valid, message = self.validate_track_data(track_data)
+                is_valid, message = self.validate_track_json(track_data)
 
                 if not is_valid:
                     logging.debug(f"Skipping track: {message}")
