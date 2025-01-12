@@ -628,7 +628,7 @@ class Myrcat:
                     logging.debug(f"Invalid track metadata: {message}")
                     return
 
-                await self.process_track_json(track_data)
+                await self.process_new_track(track_data)
             except json.JSONDecodeError as e:
                 logging.error(f"💥 Invalid JSON received: {e}\n{data}")
             except Exception as e:
