@@ -332,12 +332,13 @@ class ArtworkManager:
             logging.error(f"💥 Error processing artwork: {e}")
             return None
 
-    async def wait_for_file(self, incoming_path) -> bool:
+    async def wait_for_file(self, incoming_path: Path) -> bool:
         """Wait for file to appear, return True if found."""
         for _ in range(10):
             if incoming_path.exists():
                 return True
             await asyncio.sleep(0.5)
+        logging.debug(f"⚠️ wait_for_file failed on {incoming_path}")
         return False
 
     async def cleanup_old_artwork(self) -> None:

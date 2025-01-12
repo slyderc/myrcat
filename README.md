@@ -1,17 +1,16 @@
-# Myrcat - Now Wave Radio's Playout Publisher
+# Myrcat - Myriad Cataloger - Now Wave Radio's Playout Publisher
 
-Myrcat is an automation script that interfaces with Myriad Playout to publish track information to various social media platforms and manage web integration for Now Wave Radio.
+🐾🎶 Myrcat is an automation script that interfaces with Myriad Playout to record, publish, and track play-outs to a local database and various social media platforms for Now Wave Radio.
 
 ## Features
 
 - Monitors Myriad OCP playout info. via a Web API for track changes
 - Publishes to social media platforms (Last.FM, Listenbrainz, Facebook, Bluesky)
-- Records plays in a SQLite database for SoundExchange reporting
+- Records plays in a SQLite database for SoundExchange reporting and historical analysis
 - Manages album artwork sent by Myriad OCP (FTP) for web display
 - Provides real-time "Now Playing" information for web display
-- Tracks program transitions and statistics
+- Tracks programming and show transitions and statistics
 - Reads all configuration details from a config.ini file for easy setup
-- Logs all activity to a log file based on a level as defined in the configuration file
 
 ### Prerequisites
 
@@ -30,45 +29,45 @@ source venv/bin/activate
 pip install .
 
 # Copy default config
-sudo cp config/pubnwr_MYRIAD.ini /etc/pubnwr_MYRIAD.ini
+sudo cp config/myrcat_MYRIAD.ini /etc/myrcat_MYRIAD.ini
 ```
 
 ### System Service Installation
 
 ```bash
 # Copy service file
-sudo cp system/pubnwr.service /etc/systemd/system/
+sudo cp system/myrcat.service /etc/systemd/system/
 
 # Create system user
-sudo useradd -r -s /bin/false pubnwr
+sudo useradd -r -s /bin/false myrcat
 
 # Create required directories
-sudo mkdir -p /opt/pubnwr
-sudo mkdir -p /var/lib/pubnwr
-sudo mkdir -p /var/log/pubnwr
+sudo mkdir -p /opt/myrcat
+sudo mkdir -p /var/lib/myrcat
+sudo mkdir -p /var/log/myrcat
 
 # Set permissions
-sudo chown -R pubnwr:pubnwr /opt/pubnwr
-sudo chown -R pubnwr:pubnwr /var/lib/pubnwr
-sudo chown -R pubnwr:pubnwr /var/log/pubnwr
+sudo chown -R myrcat:myrcat /opt/myrcat
+sudo chown -R myrcat:myrcat /var/lib/myrcat
+sudo chown -R myrcat:myrcat /var/log/myrcat
 
 # Initialize database
-sudo -u pubnwr sqlite3 /var/lib/pubnwr/pubnwr.db < db/schema.sql
+sudo -u myrcat sqlite3 /var/lib/myrcat/myrcat.db < db/schema.sql
 
 # Enable and start service
-sudo systemctl enable pubnwr
-sudo systemctl start pubnwr
+sudo systemctl enable myrcat
+sudo systemctl start myrcat
 ```
 
 ## Configuration
 
-Edit `/etc/pubnwr_MYRIAD.ini` and set your configuration:
+Edit `config.ini_default` and set your configuration:
 
 ```ini
 [main]
 debug_log = false
 verbose_log = true
-logfile = /var/log/pubnwr/pubnwr.log
+logfile = /var/log/myrcat/myrcat.log
 ...
 ```
 
@@ -96,23 +95,23 @@ logfile = /var/log/pubnwr/pubnwr.log
 
 ```bash
 # Run with default config
-pubnwr
+myrcat
 
 # Run with custom config
-pubnwr /path/to/config.ini
+myrcat -c /path/to/config.ini
 ```
 
 ### Service Management
 
 ```bash
 # Start service
-sudo systemctl start pubnwr
+sudo systemctl start myrcat
 
 # Check status
-sudo systemctl status pubnwr
+sudo systemctl status myrcat
 
 # View logs
-sudo journalctl -u pubnwr
+sudo journalctl -u myrcat
 ```
 
 ## Database Maintenance
@@ -121,7 +120,7 @@ Periodic cleanup script for old entries:
 
 ```bash
 # Clean entries older than 90 days
-sqlite3 /var/lib/pubnwr/pubnwr.db "DELETE FROM realtime WHERE timestamp < strftime('%s', 'now', '-90 days');"
+sqlite3 /var/lib/myrcat/myrcat.db "DELETE FROM realtime WHERE timestamp < strftime('%s', 'now', '-90 days');"
 ```
 
 ## Troubleshooting
@@ -140,8 +139,8 @@ sqlite3 /var/lib/pubnwr/pubnwr.db "DELETE FROM realtime WHERE timestamp < strfti
 
 ### Log Locations
 
-- Application log: `./log/pubnwr/pubnwr.log`
-- System service log: `journalctl -u pubnwr`
+- Application log: `./log/myrcat/myrcat.log`
+- System service log: `journalctl -u myrcat`
 
 ## Contributing
 
@@ -158,4 +157,3 @@ MIT License - See LICENSE file for details.
 
 For issues or questions, please file an issue on GitHub or contact:
 - website:  NowWave.Radio
-# myrcat
