@@ -502,6 +502,7 @@ class Myrcat:
                         1, duration - 5
                     )  # Leave at least 5s before next track
                 logging.info(f"Delaying track processing for {delay_seconds} seconds")
+                await asyncio.sleep(delay_seconds)
 
             # Process artwork
             if track.image:
