@@ -603,6 +603,22 @@ class Myrcat:
 
         return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
 
+    def decode_json_data(self, data: bytes) -> Dict[str, Any]:
+        """Decode and parse track data."""
+        try:
+            decoded = data.decode("utf-8")
+        except UnicodeDecodeError as utf8_error:
+            logging.warning(f"UTF-8 decode failed: {utf8_error}, trying cp1252...")
+            try:
+                decoded = data.decode("cp1252")
+            except UnicodeDecodeError as cp1252_error:
+                logging.error(f"Both UTF-8 and CP1252 decoding failed: {cp1252_error}")
+                decoded = data.decode(
+                    "utf-8", errors="replace"
+                )  # Replace invalid characters
+                logging.warning("Invalid characters replaced with placeholders.")
+        return json.loads(decoded)
+
     async def myriad_connected(self, reader, writer):
         """Handle incoming connections and JSON data."""
         try:
@@ -612,31 +628,25 @@ class Myrcat:
 
             # Parse JSON data
             try:
-                try:
-                    decoded_data = data.decode("utf-8")
-                except UnicodeDecodeError:
-                    # Specifically handle Windows-1252 encoding
-                    decoded_data = data.decode("cp1252")  # Windows-1252 encoding
-
-                # Clean up Windows-style paths in the JSON
-                cleaned_data = decoded_data.replace("\\", "/")
-                track_data = json.loads(cleaned_data)
-
-                # Validate track data
-                is_valid, message = self.validate_track_json(track_data)
-                if not is_valid:
-                    logging.debug(f"Invalid track metadata: {message}")
+                if not (data := await reader.read()):
                     return
+                try:
+                    track_data = self.decode_track_data(data)
 
-                await self.process_new_track(track_data)
-            except json.JSONDecodeError as e:
-                logging.error(f"💥 Invalid JSON received: {e}\n{data}")
+                    # Validate track data
+                    is_valid, message = self.validate_track_json(track_data)
+                    if not is_valid:
+                        logging.debug(f"Invalid track metadata: {message}")
+                        return
+
+                    await self.process_track_update(track_data)
+                except json.JSONDecodeError as e:
+                    logging.error(f"💥 Invalid JSON: {e}\nRaw data: {data}")
             except Exception as e:
                 logging.error(f"💥 Error processing data: {e}")
-
-            writer.close()
-            await writer.wait_closed()
-
+            finally:
+                writer.close()
+                await writer.wait_closed()
         except Exception as e:
             logging.error(f"💥 Error handling client connection: {e}")
 
