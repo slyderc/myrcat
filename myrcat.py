@@ -36,6 +36,7 @@ class TrackInfo:
     artist: str
     title: str
     album: Optional[str]
+    year: Optional[str]
     publisher: Optional[str]
     isrc: Optional[str]
     image: Optional[str]
@@ -244,6 +245,7 @@ class DatabaseManager:
                     artist TEXT NOT NULL,
                     title TEXT NOT NULL,
                     album TEXT,
+                    year INTEGER,
                     publisher TEXT,
                     isrc TEXT,
                     starttime TEXT,
@@ -263,15 +265,16 @@ class DatabaseManager:
                 conn.execute(
                     """
                     INSERT INTO playouts (
-                        artist, title, album, publisher, isrc,
+                        artist, title, album, year, publisher, isrc,
                         starttime, duration, media_id, program,
                         presenter, timestamp
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         track.artist,
                         track.title,
                         track.album,
+                        track.year,
                         track.publisher,
                         track.isrc,
                         track.starttime,
@@ -478,6 +481,7 @@ class Myrcat:
                 artist=track_data["artist"],
                 title=track_data["title"],
                 album=track_data.get("album"),
+                year=int(track_data.get("year", 0)) if track_data.get("year") else None,
                 publisher=track_data.get("publisher"),
                 isrc=track_data.get("ISRC"),
                 image=track_data.get("image"),
