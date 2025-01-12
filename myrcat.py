@@ -504,7 +504,7 @@ class Myrcat:
                 presenter=track_json.get("presenter"),
             )
 
-            logging.info(f"🎹 {track.title} [{track.year}] - 👨‍🎤 {track.artist}")
+            logging.info(f'"{track.title}" [{track.year}] - {track.artist}')
 
             # Check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
@@ -608,15 +608,17 @@ class Myrcat:
         try:
             decoded_data = data.decode("utf-8")
         except UnicodeDecodeError as utf8_error:
-            logging.warning(f"UTF-8 decode failed: {utf8_error}, trying cp1252...")
+            logging.debug(f"UTF-8 decode failed: {utf8_error}, trying cp1252...")
             try:
                 decoded_data = data.decode("cp1252")
             except UnicodeDecodeError as cp1252_error:
-                logging.error(f"Both UTF-8 and CP1252 decoding failed: {cp1252_error}")
+                logging.debug(
+                    f"💥 UTF-8 and CP1252 decoding failed: {utf8_error} -- {cp1252_error}"
+                )
                 decoded_data = data.decode(
                     "utf-8", errors="replace"
                 )  # Replace invalid characters
-                logging.warning("Invalid characters replaced with placeholders.")
+                logging.debug("Invalid characters replaced with placeholders.")
         decoded = decoded_data.replace("\\", "/")
         return json.loads(decoded)
 
