@@ -93,6 +93,7 @@ class SocialMediaManager:
     def setup_lastfm(self):
         """Initialize Last.FM API connection using pylast."""
         try:
+            logging.getLogger("pylast").setLevel(logging.ERROR)
             lastfm_config = self.config["lastfm"]
             self.lastfm = pylast.LastFMNetwork(
                 api_key=lastfm_config["api_key"],
@@ -102,7 +103,6 @@ class SocialMediaManager:
                     "password"
                 ],  # Password is already hashed in config
             )
-            logging.getLogger("pylast").setLevel(logging.ERROR)
             logging.debug(f"Last.FM initialized for user: {lastfm_config['username']}")
         except Exception as e:
             logging.error(f"💥 Last.FM setup error: {str(e)}")
@@ -111,6 +111,7 @@ class SocialMediaManager:
     def setup_listenbrainz(self):
         """Initialize ListenBrainz client."""
         try:
+            logging.getLogger("pylistenbrainz").setLevel(logging.ERROR)
             self.listenbrainz = pylistenbrainz.ListenBrainz()
             self.listenbrainz.set_auth_token(self.config["listenbrainz"]["token"])
             logging.debug(f"Listenbrainz initialized")
