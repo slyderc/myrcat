@@ -6,6 +6,7 @@ Description: Socket-based service that receives Myriad OCP JSON payloads
 Version: 1.0.0
 """
 
+import re
 import sys
 import asyncio
 import configparser
