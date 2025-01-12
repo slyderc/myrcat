@@ -601,7 +601,7 @@ class Myrcat:
         ]:
             return False, f"Fields exceed max length: {', '.join(oversized)}"
 
-            return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
+        return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
 
     async def myriad_connected(self, reader, writer):
         """Handle incoming connections and JSON data."""
