@@ -143,7 +143,7 @@ class SocialMediaManager:
         except Exception as e:
             logging.error(f"💥 Last.FM update error: {e}")
 
-    async def update_listenbrainz(self, track: Trackdebug):
+    async def update_listenbrainz(self, track: TrackInfo):
         """Update ListenBrainz with current track."""
         if not hasattr(self, "listenbrainz"):
             return  # Service not initialized - excluded in config
@@ -159,7 +159,7 @@ class SocialMediaManager:
         except Exception as error:
             logging.error(f"💥 Listenbrainz update error: {error}")
 
-    async def update_bluesky(self, track: Trackdebug):
+    async def update_bluesky(self, track: TrackInfo):
         """Update Bluesky with current track."""
         if not hasattr(self, "bluesky"):
             return  # Service not initialized - excluded in config
@@ -181,7 +181,7 @@ class SocialMediaManager:
         except Exception as e:
             logging.error(f"💥 Bluesky update error: {e}")
 
-    async def update_facebook(self, track: Trackdebug):
+    async def update_facebook(self, track: TrackInfo):
         """Update Facebook page with current track."""
         if not hasattr(self, "facebook"):
             return  # Service not initialized - excluded in config
@@ -202,7 +202,7 @@ class SocialMediaManager:
         except Exception as e:
             logging.error(f"💥 Facebook update error: {e}")
 
-    async def update_all_platforms(self, track: Trackdebug):
+    async def update_all_platforms(self, track: TrackInfo):
         """Update all configured social media platforms with track debug."""
         if not self.publish_enabled:
             logging.debug("Social media publishing is disabled!")
@@ -259,7 +259,7 @@ class DatabaseManager:
             """
             )
 
-    async def log_track(self, track: Trackdebug):
+    async def log_track(self, track: TrackInfo):
         """Log track play to database for SoundExchange reporting."""
         try:
             with sqlite3.connect(self.db_path) as conn:
