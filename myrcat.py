@@ -489,7 +489,7 @@ class Myrcat:
 
             # Create TrackInfo object
             track = TrackInfo(
-                artist=track_json["artist"],
+                artist=track_json.get("artist"),
                 title=re.split(r"[\(\[\<]", track_json["title"])[0].strip(),
                 album=track_json.get("album"),
                 year=int(track_json.get("year", 0)) if track_json.get("year") else None,
@@ -504,8 +504,7 @@ class Myrcat:
                 presenter=track_json.get("presenter"),
             )
 
-            logging.info(f"🎹 {track.title} [{track.year}]")
-            logging.info(f"👨‍🎤 {track.artist}")
+            logging.info(f"🎹 {track.title} [{track.year}] - 👨‍🎤 {track.artist}")
 
             # Check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
@@ -619,9 +618,16 @@ class Myrcat:
         """Decode and parse track data."""
         try:
             decoded = data.decode("utf-8")
-        except UnicodeDecodeError:
-            decoded = data.decode("cp1252")
-
+        except UnicodeDecodeError as utf8_error:
+            logging.warning(f"UTF-8 decode failed: {utf8_error}, trying cp1252...")
+            try:
+                decoded = data.decode("cp1252")
+            except UnicodeDecodeError as cp1252_error:
+                logging.error(f"Both UTF-8 and cp1252 decoding failed: {cp1252_error}")
+                logging.error(f"Raw problematic data: {data}")
+                decoded = data.decode(
+                    "utf-8", errors="replace"
+                )  # Replace invalid characters
         return json.loads(decoded.replace("\\", "/"))  # Replace Windows file paths
 
     async def start_server(self):
