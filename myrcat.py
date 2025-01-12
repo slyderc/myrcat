@@ -625,7 +625,7 @@ class Myrcat:
             if not (data := await reader.read()):
                 return
             try:
-                track_data = self.decode_track_data(data)
+                track_data = self.decode_json_data(data)
 
                 # Validate track data
                 is_valid, message = self.validate_track_json(track_data)
@@ -633,7 +633,7 @@ class Myrcat:
                     logging.debug(f"Invalid track metadata: {message}")
                     return
 
-                await self.process_track_update(track_data)
+                await self.process_new_track(track_data)
             except json.JSONDecodeError as e:
                 logging.error(f"💥 Invalid JSON: {e}\nRaw data: {data}")
         except Exception as e:
