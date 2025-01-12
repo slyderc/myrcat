@@ -414,6 +414,7 @@ class Myrcat:
     def __init__(self, config_path: str):
         self.config = configparser.ConfigParser()
         self.config.read(config_path)
+        self.last_processed_track = None
 
         # Setup logging
         log_level = getattr(logging, self.config["general"]["log_level"].upper())
@@ -459,27 +460,20 @@ class Myrcat:
             logging.error(f"Error loading skip list {file_path}: {e}")
             return []
 
-    def should_skip_track(self, artist: str, title: str) -> bool:
+    def should_skip_track(self, title: str, artist: str) -> bool:
         """Check if track should be skipped based on artist or title."""
         return any([artist in self.skip_artists, title in self.skip_titles])
 
     async def process_track_update(self, track_data: Dict[str, Any]):
         """Process a track update from Myriad."""
-        try:
-            # Check if track should be skipped
-            if self.should_skip_track(track_data["artist"], track_data["title"]):
-                logging.info(
-                    f"Skipping track due to filter: {track_data['artist']} - {track_data['title']}"
-                )
-                return
 
-            # Convert duration to integer
+        try:
             duration = int(track_data.get("duration", 0))
 
             # Create TrackInfo object
             track = TrackInfo(
                 artist=track_data["artist"],
-                title=track_data["title"],
+                title=re.split(r"[\(\[\<]", track_data["title"])[0].strip(),
                 album=track_data.get("album"),
                 year=int(track_data.get("year", 0)) if track_data.get("year") else None,
                 publisher=track_data.get("publisher"),
@@ -492,6 +486,26 @@ class Myrcat:
                 program=track_data.get("program"),
                 presenter=track_data.get("presenter"),
             )
+
+            logging.info(f"Myriad sent: {track.title} - {track.artist}")
+
+            # Check if track should be skipped
+            if self.should_skip_track(track.title, track.artist):
+                logging.info(
+                    f"Skipping track due to filter: {track.title} - {track.artist}"
+                )
+                return
+
+            # Check for duplicate track, in case we're messing with Myriad OCP
+            if (
+                self.last_processed_track
+                and track.artist == self.last_processed_track.artist
+                and track.title == self.last_processed_track.title
+            ):
+                logging.info(
+                    f"Skipping duplicate track: {track.artist} - {track.title}"
+                )
+                return
 
             # Delay publishing to the website to accommodate stream delay
             delay_seconds = self.config.getint("general", "publish_delay", fallback=0)
@@ -521,6 +535,8 @@ class Myrcat:
 
             # Update social media
             await self.social.update_all_platforms(track)
+
+            self.last_processed_track = track
 
             logging.info(f"Processed track update: {track.artist} - {track.title}")
         except Exception as e:
@@ -571,9 +587,6 @@ class Myrcat:
         for field, max_len in max_lengths.items():
             if track_data.get(field) and len(str(track_data[field])) > max_len:
                 return False, f"{field} exceeds maximum length of {max_len}"
-
-        # Clean up title to remove (Remixed by DJ) or [feat. John Doe] or <2nd Artist>
-        track_data["title"] = re.split(r"[\(\[\<]", track_data["title"])[0].strip()
 
         return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
 
