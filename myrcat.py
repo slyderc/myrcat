@@ -487,7 +487,7 @@ class Myrcat:
                 presenter=track_data.get("presenter"),
             )
 
-            logging.info(f"Myriad sent: {track.title} - {track.artist}")
+            logging.info(f"🎹 New playout: {track.title} - {track.artist}")
 
             # Check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
