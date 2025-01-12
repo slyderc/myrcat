@@ -560,10 +560,12 @@ class Myrcat:
     def validate_track_json(self, track_json: Dict[str, Any]) -> tuple[bool, str]:
         """Validate incoming track data JSON."""
 
-        # Check required fields exist
-        required_fields = ["artist", "title", "starttime", "duration", "media_id"]
-        if missing := required_fields - track_json.keys():
-            return False, f"⛔️ Missing required fields: {', '.join(missing)}"
+        if not track_json:
+            return False, "⛔️ No JSON track data received!"
+        required_keys = {"artist", "title", "starttime", "duration", "media_id"}
+        missing_keys = required_keys - track_json.keys()
+        if missing_keys:
+            return False, f"⛔️ Missing required keys: {', '.join(missing_keys)}"
 
         # Skip empty/non-music content
         if not track_json.get("artist"):
@@ -617,7 +619,7 @@ class Myrcat:
                     decoded_data = data.decode("cp1252")  # Windows-1252 encoding
 
                 # Clean up Windows-style paths in the JSON
-                cleaned_data = data.decode().replace("\\", "/")
+                cleaned_data = decoded_data.replace("\\", "/")
                 track_data = json.loads(cleaned_data)
 
                 # Validate track data
