@@ -622,33 +622,25 @@ class Myrcat:
     async def myriad_connected(self, reader, writer):
         """Handle incoming connections and JSON data."""
         try:
-            data = await reader.read()
-            if not data:
+            if not (data := await reader.read()):
                 return
-
-            # Parse JSON data
             try:
-                if not (data := await reader.read()):
+                track_data = self.decode_track_data(data)
+
+                # Validate track data
+                is_valid, message = self.validate_track_json(track_data)
+                if not is_valid:
+                    logging.debug(f"Invalid track metadata: {message}")
                     return
-                try:
-                    track_data = self.decode_track_data(data)
 
-                    # Validate track data
-                    is_valid, message = self.validate_track_json(track_data)
-                    if not is_valid:
-                        logging.debug(f"Invalid track metadata: {message}")
-                        return
-
-                    await self.process_track_update(track_data)
-                except json.JSONDecodeError as e:
-                    logging.error(f"💥 Invalid JSON: {e}\nRaw data: {data}")
-            except Exception as e:
-                logging.error(f"💥 Error processing data: {e}")
-            finally:
-                writer.close()
-                await writer.wait_closed()
+                await self.process_track_update(track_data)
+            except json.JSONDecodeError as e:
+                logging.error(f"💥 Invalid JSON: {e}\nRaw data: {data}")
         except Exception as e:
-            logging.error(f"💥 Error handling client connection: {e}")
+            logging.error(f"💥 Error processing data: {e}")
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
     async def start_server(self):
         """Start the socket server."""
