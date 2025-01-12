@@ -416,15 +416,12 @@ class Myrcat:
         log_level = getattr(logging, self.config["general"]["log_level"].upper())
 
         # Disable logging for some external modules; we'll do the error handling/reporting
-        pylast_logger = logging.getLogger("pylast")
-        pylast_logger.disabled = True
-        pylast_logger.propagate = False  # Prevent propagation to root logger
-        while pylast_logger.hasHandlers():
-            pylast_logger.removeHandler(pylast_logger.handlers[0])
-
-        pylistenbrainz_logger = logging.getLogger("pylistenbrainz")
-        pylistenbrainz_logger.disabled = True
-        pylistenbrainz_logger.propagate = False
+        for logger_name in ["pylast", "urllib3", "pylistenbrainz"]:
+            logger = logging.getLogger(logger_name)
+            logger.disabled = True
+            logger.propagate = False
+            while logger.hasHandlers():
+                logger.removeHandler(logger.handlers[0])
 
         logging.basicConfig(
             filename=self.config["general"]["log_file"],
