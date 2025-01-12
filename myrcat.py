@@ -105,7 +105,7 @@ class SocialMediaManager:
             )
             logging.debug(f"Last.FM initialized for user: {lastfm_config['username']}")
         except Exception as e:
-            logging.error(f"Last.FM setup error: {str(e)}")
+            logging.error(f"💥 Last.FM setup error: {str(e)}")
             self.lastfm = None
 
     def setup_listenbrainz(self):
@@ -115,7 +115,7 @@ class SocialMediaManager:
             self.listenbrainz.set_auth_token(self.config["listenbrainz"]["token"])
             logging.debug(f"Listenbrainz initialized")
         except Exception as e:
-            logging.error(f"Listenbrainz setup error: {str(e)}")
+            logging.error(f"💥 Listenbrainz setup error: {str(e)}")
 
     def setup_bluesky(self):
         """Initialize Bluesky client."""
@@ -138,9 +138,9 @@ class SocialMediaManager:
             self.lastfm.scrobble(
                 artist=track.artist, title=track.title, timestamp=lastfm_timestamp
             )
-            logging.info(f"Updated Last.FM: {track.artist} - {track.title}")
+            logging.info(f"📒 Updated Last.FM")
         except Exception as e:
-            logging.error(f"Last.FM update error: {e}")
+            logging.error(f"💥 Last.FM update error: {e}")
 
     async def update_listenbrainz(self, track: TrackInfo):
         """Update ListenBrainz with current track."""
@@ -154,9 +154,9 @@ class SocialMediaManager:
                 listened_at=int(time.time()),
             )
             lb_response = self.listenbrainz.submit_single_listen(lb_listen)
-            logging.info(f"Updated ListenBrainz: {track.artist} - {track.title}")
+            logging.info(f"📒 Updated ListenBrainz")
         except Exception as error:
-            logging.error(f"Listenbrainz update error: {error}")
+            logging.error(f"💥 Listenbrainz update error: {error}")
 
     async def update_bluesky(self, track: TrackInfo):
         """Update Bluesky with current track."""
@@ -176,9 +176,9 @@ class SocialMediaManager:
             # Create post (this is synchronous - ATProto handles this internally)
             client.send_post(text=post_text)
 
-            logging.info(f"Updated Bluesky: {track.artist} - {track.title}")
+            logging.info(f"📒 Updated Bluesky")
         except Exception as e:
-            logging.error(f"Bluesky update error: {e}")
+            logging.error(f"💥 Bluesky update error: {e}")
 
     async def update_facebook(self, track: TrackInfo):
         """Update Facebook page with current track."""
@@ -197,9 +197,9 @@ class SocialMediaManager:
             self.facebook.put_object(
                 parent_object=self.fb_page_id, connection_name="feed", message=message
             )
-            logging.info(f"Updated Facebook: {track.artist} - {track.title}")
+            logging.info(f"📒 Updated Facebook")
         except Exception as e:
-            logging.error(f"Facebook update error: {e}")
+            logging.error(f"💥 Facebook update error: {e}")
 
     async def update_all_platforms(self, track: TrackInfo):
         """Update all configured social media platforms with track info."""
@@ -221,7 +221,7 @@ class SocialMediaManager:
             try:
                 await update_func(track)
             except Exception as e:
-                logging.error(f"Error updating {platform_name}: {e}")
+                logging.error(f"💥 Error updating {platform_name}: {e}")
 
 
 class DatabaseManager:
@@ -285,12 +285,12 @@ class DatabaseManager:
                         track.timestamp,
                     ),
                 )
-            logging.info(f"Logged track to database: {track.artist} - {track.title}")
+            logging.info(f"📈 Logged to database")
         except Exception as e:
-            logging.error(f"Database error: {e}")
+            logging.error(f"💥 Database error: {e}")
             # Add more detailed error logging
             if isinstance(e, sqlite3.OperationalError):
-                logging.error(f"SQLite operational error details: {str(e)}")
+                logging.error(f"💥 SQLite operational error details: {str(e)}")
 
 
 class ArtworkManager:
@@ -318,16 +318,14 @@ class ArtworkManager:
                     # Copy file with new name
                     shutil.copy2(str(incoming_path), str(publish_path))
                     incoming_path.unlink()  # Remove original file
-                    logging.info(
-                        f"Copied artwork to publish directory as: {new_filename}"
-                    )
+                    logging.info(f"🎨 Artwork published: {new_filename}")
                     return new_filename
                 except Exception as e:
-                    logging.error(f"Error processing artwork: {e}")
+                    logging.error(f"💥 Error processing artwork: {e}")
                     return None
             await asyncio.sleep(0.5)
 
-        logging.warning(f"Artwork file not found after waiting: {incoming_path}")
+        logging.warning(f"⚠️ Artwork missing after waiting: {incoming_path}")
         return None
 
 
@@ -356,9 +354,8 @@ class PlaylistManager:
         try:
             self.current_track = track
             await self.update_playlist_json(track)
-            logging.info(f"Updated current track: {track.artist} - {track.title}")
         except Exception as e:
-            logging.error(f"Error updating track: {e}")
+            logging.error(f"💥 Error updating track: {e}")
 
     async def update_playlist_json(self, track: TrackInfo) -> None:
         """Update the playlist.json file with current track information.
@@ -380,13 +377,13 @@ class PlaylistManager:
             with open(self.playlist_path, "w") as f:
                 json.dump(playlist_data, f, indent=4)
 
-            logging.info("Updated playlist successfully")
+            logging.info("💾 Saved new playlist file")
 
             # Now safe to clean up old artwork files
             await self.cleanup_old_artwork()
 
         except Exception as e:
-            logging.error(f"Error updating playlist: {e}")
+            logging.error(f"💥 Error updating playlist: {e}")
 
     async def cleanup_old_artwork(self) -> None:
         """Remove old artwork files from publish directory."""
@@ -401,11 +398,11 @@ class PlaylistManager:
                     file.unlink()
                     logging.debug(f"Removed old artwork: {file.name}")
                 except Exception as e:
-                    logging.error(f"Error removing old artwork {file.name}: {e}")
+                    logging.error(f"💥 Error removing old artwork {file.name}: {e}")
 
-            logging.info("Artwork cleanup completed")
+            logging.info("🧼 Artwork cleanup completed")
         except Exception as e:
-            logging.error(f"Error during artwork cleanup: {e}")
+            logging.error(f"💥 Error during artwork cleanup: {e}")
 
 
 class Myrcat:
@@ -424,6 +421,8 @@ class Myrcat:
             format="%(asctime)s - %(levelname)s - %(message)s",
         )
         logging.getLogger("pylast").setLevel(logging.WARNING)
+
+        logging.info(f"😺 Starting up!")
 
         # Load skip lists from files
         skip_artists_file = Path(self.config["publish_exceptions"]["skip_artists_file"])
@@ -446,7 +445,7 @@ class Myrcat:
     def load_skip_list(self, file_path: Path) -> list:
         """Load skip list from file, ignoring comments and empty lines."""
         if not file_path.exists():
-            logging.warning(f"Skip list file not found: {file_path}")
+            logging.warning(f"⚠️ Skip list file not found: {file_path}")
             return []
 
         try:
@@ -457,7 +456,7 @@ class Myrcat:
                     if line.strip() and not line.strip().startswith("#")
                 ]
         except Exception as e:
-            logging.error(f"Error loading skip list {file_path}: {e}")
+            logging.error(f"💥 Error loading skip list {file_path}: {e}")
             return []
 
     def should_skip_track(self, title: str, artist: str) -> bool:
@@ -519,7 +518,7 @@ class Myrcat:
                     delay_seconds = max(
                         1, duration - 5
                     )  # Leave at least 5s before next track
-                logging.info(f"Delaying track processing for {delay_seconds} seconds")
+                logging.info(f"⏱️ Delaying track processing for {delay_seconds} seconds")
                 await asyncio.sleep(delay_seconds)
 
             # Process artwork
@@ -540,7 +539,7 @@ class Myrcat:
 
             logging.info(f"Processed track update: {track.artist} - {track.title}")
         except Exception as e:
-            logging.error(f"Error in track update processing: {e}")
+            logging.error(f"💥 Error in track update processing: {e}")
 
     def validate_track_data(self, track_data: Dict[str, Any]) -> tuple[bool, str]:
         """Validate incoming track data.
@@ -616,15 +615,15 @@ class Myrcat:
 
                 await self.process_track_update(track_data)
             except json.JSONDecodeError as e:
-                logging.error(f"Invalid JSON received: {e}\n{data}")
+                logging.error(f"💥 Invalid JSON received: {e}\n{data}")
             except Exception as e:
-                logging.error(f"Error processing data: {e}")
+                logging.error(f"💥 Error processing data: {e}")
 
             writer.close()
             await writer.wait_closed()
 
         except Exception as e:
-            logging.error(f"Error handling client connection: {e}")
+            logging.error(f"💥 Error handling client connection: {e}")
 
     async def run_server(self):
         """Start the socket server."""
@@ -647,7 +646,7 @@ class Myrcat:
         except KeyboardInterrupt:
             logging.info("Server shutdown requested")
         except Exception as e:
-            logging.error(f"Unexpected error: {e}")
+            logging.error(f"💥 Unexpected error: {e}")
 
 
 if __name__ == "__main__":
@@ -670,6 +669,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(app.run_server())
     except KeyboardInterrupt:
-        logging.info("Server shutdown requested")
+        logging.info("Shutting down")
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        logging.error(f"💥 Unexpected error: {e}")
