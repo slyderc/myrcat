@@ -308,7 +308,7 @@ class ArtworkManager:
 
         # Wait for up to 5 seconds for the file to appear
 
-        if not await self.wait_for_file():
+        if not await self.wait_for_file(incoming_path):
             logging.warning(f"⚠️ Artwork file missing: {incoming_path}")
             return None
 
@@ -332,7 +332,7 @@ class ArtworkManager:
             logging.error(f"💥 Error processing artwork: {e}")
             return None
 
-    async def wait_for_file() -> bool:
+    async def wait_for_file(self, incoming_path) -> bool:
         """Wait for file to appear, return True if found."""
         for _ in range(10):
             if incoming_path.exists():
