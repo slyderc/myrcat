@@ -2,6 +2,7 @@
 log_level = INFO
 log_file = myrcat.log
 database_path = myrcat.db
+publish_delay = 45
 timezone = US/Pacific
 
 [server]
@@ -16,23 +17,23 @@ publish_directory = publish
 playlist_path = playlist.json
 
 [lastfm]
-api_key = 
-api_secret = 
-username = 
-password = 
+api_key =
+api_secret =
+username =
+password =
 
 [listenbrainz]
-token = 
+token =
 
 [facebook]
-app_id = 
-app_secret = 
-access_token = 
-page_id = 
+app_id =
+app_secret =
+access_token =
+page_id =
 
 [bluesky]
-handle = 
-app_password = 
+handle =
+app_password =
 
 [publish_exceptions]
 publish_socials = False

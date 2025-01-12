@@ -489,7 +489,21 @@ class Myrcat:
                 presenter=track_data.get("presenter"),
             )
 
-            # Process artwork if provided
+            # Delay publishing to the website to accommodate stream delay
+            delay_seconds = self.config.getint("general", "publish_delay", fallback=0)
+
+            if delay_seconds > 0:
+                # Make sure we don't delay longer than track duration
+                if duration and duration < delay_seconds:
+                    logging.warning(
+                        f"Track duration ({duration}s) is shorter than publish_delay ({delay_seconds}s), adjusting delay"
+                    )
+                    delay_seconds = max(
+                        1, duration - 5
+                    )  # Leave at least 5s before next track
+                logging.info(f"Delaying track processing for {delay_seconds} seconds")
+
+            # Process artwork
             if track.image:
                 new_filename = await self.artwork.process_artwork(track.image)
                 track.image = new_filename  # Update track object with the new filename
