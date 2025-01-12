@@ -102,6 +102,7 @@ class SocialMediaManager:
                     "password"
                 ],  # Password is already hashed in config
             )
+            logging.getLogger("pylast").setLevel(logging.ERROR)
             logging.debug(f"Last.FM initialized for user: {lastfm_config['username']}")
         except Exception as e:
             logging.error(f"💥 Last.FM setup error: {str(e)}")
@@ -417,10 +418,9 @@ class Myrcat:
         logging.basicConfig(
             filename=self.config["general"]["log_file"],
             level=log_level,
-            format="%(asctime)s-%(levelname)s-%(message)s",
+            format="%(asctime)s %(levelname)s %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
-        logging.getLogger("pylast").setLevel(logging.ERROR)
 
         logging.info(f"😺 Starting up!")
 
