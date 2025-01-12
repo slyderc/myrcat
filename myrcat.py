@@ -604,23 +604,24 @@ class Myrcat:
         return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
 
     def decode_json_data(self, data: bytes) -> Dict[str, Any]:
-        """Decode and parse track data."""
+        """Decode and parse JSON track data."""
         try:
-            decoded = data.decode("utf-8")
+            decoded_data = data.decode("utf-8")
         except UnicodeDecodeError as utf8_error:
             logging.warning(f"UTF-8 decode failed: {utf8_error}, trying cp1252...")
             try:
-                decoded = data.decode("cp1252")
+                decoded_data = data.decode("cp1252")
             except UnicodeDecodeError as cp1252_error:
                 logging.error(f"Both UTF-8 and CP1252 decoding failed: {cp1252_error}")
-                decoded = data.decode(
+                decoded_data = data.decode(
                     "utf-8", errors="replace"
                 )  # Replace invalid characters
                 logging.warning("Invalid characters replaced with placeholders.")
+        decoded = decoded_data.replace("\\", "/")
         return json.loads(decoded)
 
     async def myriad_connected(self, reader, writer):
-        """Handle incoming connections and JSON data."""
+        """Handle incoming connections and process datastream."""
         try:
             if not (data := await reader.read()):
                 return
