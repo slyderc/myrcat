@@ -73,12 +73,11 @@ class SocialMediaManager:
             ]
 
         logging.info(
-            f"ALL social media publishing {'enabled' if self.publish_enabled else 'disabled'}"
+            f"{'✅' if self.publish_enabled else '❌'} Social media publishing {'enabled' if self.publish_enabled else 'disabled'}"
         )
-        if self.disabled_services:
-            logging.info(
-                f"Individual disabled services: {', '.join(self.disabled_services)}"
-            )
+
+        if self.disabled_services and self.publish_enabled:
+            logging.info(f"❌ Disabling services: {', '.join(self.disabled_services)}")
 
         # Initialize enabled services
         if self.publish_enabled:
@@ -418,9 +417,9 @@ class Myrcat:
         logging.basicConfig(
             filename=self.config["general"]["log_file"],
             level=log_level,
-            format="%(asctime)s - %(levelname)s - %(message)s",
+            format="%(asctime)s-%(levelname)s-%(message)s",
         )
-        logging.getLogger("pylast").setLevel(logging.WARNING)
+        logging.getLogger("pylast").setLevel(logging.ERROR)
 
         logging.info(f"😺 Starting up!")
 
@@ -537,7 +536,7 @@ class Myrcat:
 
             self.last_processed_track = track
 
-            logging.info(f"Processed track update: {track.artist} - {track.title}")
+            logging.info(f"✅ Processing complete!")
         except Exception as e:
             logging.error(f"💥 Error in track update processing: {e}")
 
@@ -634,7 +633,7 @@ class Myrcat:
         )
 
         addr = server.sockets[0].getsockname()
-        logging.info(f"Listening for Myriad on {addr}")
+        logging.info(f"🟢 Listening for Myriad on {addr}")
 
         async with server:
             await server.serve_forever()
@@ -644,7 +643,7 @@ class Myrcat:
         try:
             asyncio.run(self.run_server())
         except KeyboardInterrupt:
-            logging.info("Server shutdown requested")
+            logging.info("🔪 Killing server!")
         except Exception as e:
             logging.error(f"💥 Unexpected error: {e}")
 
@@ -669,6 +668,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(app.run_server())
     except KeyboardInterrupt:
-        logging.info("Shutting down")
+        logging.info("🔴 Shutting down!")
     except Exception as e:
         logging.error(f"💥 Unexpected error: {e}")
