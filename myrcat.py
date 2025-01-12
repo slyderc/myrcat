@@ -93,6 +93,12 @@ class SocialMediaManager:
     def setup_lastfm(self):
         """Initialize Last.FM API connection using pylast."""
         try:
+            print(
+                "Current loggers:", [name for name in logging.root.manager.loggerDict]
+            )
+            print("Pylast logger level:", logging.getLogger("pylast").level)
+            print("Root logger level:", logging.root.level)
+
             lastfm_config = self.config["lastfm"]
             self.lastfm = pylast.LastFMNetwork(
                 api_key=lastfm_config["api_key"],
