@@ -298,10 +298,11 @@ class ArtworkManager:
     def __init__(self, incoming_dir: Path, publish_dir: Path):
         self.incoming_dir = incoming_dir
         self.publish_dir = publish_dir
+        self.current_image: Optional[str] = None
         self.publish_dir.mkdir(parents=True, exist_ok=True)
 
     async def process_artwork(self, filename: str) -> Optional[str]:
-        """Check for artwork file and move it to publish directory."""
+        """Process artwork file with unique name and clean up old files."""
         if not filename:
             return None
 
@@ -311,12 +312,18 @@ class ArtworkManager:
         for _ in range(10):
             if incoming_path.exists():
                 try:
+                    # Generate unique filename
                     new_filename = f"{uuid.uuid4()}.jpg"
                     publish_path = self.publish_dir / new_filename
 
-                    # Copy file with new name
+                    # Copy file with new name and remove original
                     shutil.copy2(str(incoming_path), str(publish_path))
-                    incoming_path.unlink()  # Remove original file
+                    incoming_path.unlink()
+
+                    # Update current image and clean up old files
+                    self.current_image = new_filename
+                    await self.cleanup_old_artwork()
+
                     logging.debug(f"🎨 Artwork published: {new_filename}")
                     return new_filename
                 except Exception as e:
@@ -326,6 +333,21 @@ class ArtworkManager:
 
         logging.warning(f"⚠️ Artwork missing after waiting: {incoming_path}")
         return None
+
+    async def cleanup_old_artwork(self) -> None:
+        """Remove old artwork files from publish directory."""
+        try:
+            for file in self.publish_dir.glob("*.jpg"):
+                # Don't delete the current image file
+                if self.current_image and file.name == self.current_image:
+                    continue
+                try:
+                    file.unlink()
+                    logging.debug(f"🧹 Removed old artwork: {file.name}")
+                except Exception as e:
+                    logging.error(f"Error removing old artwork {file.name}: {e}")
+        except Exception as e:
+            logging.error(f"💥 Error during artwork cleanup: {e}")
 
 
 class PlaylistManager:
@@ -357,11 +379,7 @@ class PlaylistManager:
             logging.error(f"💥 Error updating track: {e}")
 
     async def update_playlist_json(self, track: TrackInfo) -> None:
-        """Update the playlist.json file with current track information.
-
-        Args:
-            track: TrackInfo object containing track information to write
-        """
+        """Update the playlist.json file with current track information."""
         try:
             playlist_data = {
                 "artist": track.artist,
@@ -377,31 +395,8 @@ class PlaylistManager:
                 json.dump(playlist_data, f, indent=4)
 
             logging.debug("💾 Saved new playlist file")
-
-            # Now safe to clean up old artwork files
-            await self.cleanup_old_artwork()
-
         except Exception as e:
             logging.error(f"💥 Error updating playlist: {e}")
-
-    async def cleanup_old_artwork(self) -> None:
-        """Remove old artwork files from publish directory."""
-        try:
-            current_image = self.current_track.image if self.current_track else None
-
-            for file in self.artwork_publish_path.glob("*.jpg"):
-                # Don't delete the current image file
-                if current_image and file.name == current_image:
-                    continue
-                try:
-                    file.unlink()
-                    logging.debug(f"Removed old artwork: {file.name}")
-                except Exception as e:
-                    logging.error(f"💥 Error removing old artwork {file.name}: {e}")
-
-            logging.debug("🧼 Artwork cleanup completed")
-        except Exception as e:
-            logging.error(f"💥 Error during artwork cleanup: {e}")
 
 
 class Myrcat:
@@ -511,7 +506,7 @@ class Myrcat:
                 presenter=track_data.get("presenter"),
             )
 
-            logging.info(f"🎹 {track.title}")
+            logging.info(f"🎹 {track.title} [{track.year}]")
             logging.info(f"👨‍🎤 {track.artist}")
 
             # Check if track should be skipped
@@ -561,7 +556,7 @@ class Myrcat:
 
             self.last_processed_track = track
 
-            logging.info(f"✅ Processing complete!")
+            logging.debug(f"✅ Published new playout!")
         except Exception as e:
             logging.error(f"💥 Error in track update processing: {e}")
 
