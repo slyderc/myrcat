@@ -537,12 +537,12 @@ class Myrcat:
                 )
                 await asyncio.sleep(delay_seconds)
 
-            # Process artwork
+            # Process artwork file on web server
             if track.image:
                 new_filename = await self.artwork.process_artwork(track.image)
                 track.image = new_filename  # Update track object with the new filename
 
-            # Update playlist
+            # Update playlist file on web server
             await self.playlist.update_track(track)
 
             # Log to database
@@ -560,14 +560,17 @@ class Myrcat:
     def validate_track_json(self, track_json: Dict[str, Any]) -> tuple[bool, str]:
         """Validate incoming track data JSON."""
 
-        # Skip empty/non-music content
-        if not track_json.get("artist") and not track_json.get("title"):
-            return False, "⚠️ No artist or title data!"
-
         # Check required fields exist
         required_fields = ["artist", "title", "starttime", "duration", "media_id"]
         if missing := required_fields - track_json.keys():
-            return False, f"⚠️ Missing required fields: {', '.join(missing)}"
+            return False, f"⛔️ Missing required fields: {', '.join(missing)}"
+
+        # Skip empty/non-music content
+        if not track_json.get("artist"):
+            return False, "⛔️ Missing artist data!"
+
+        if not track_json.get("title"):
+            return False, "⛔️ Missing title data!"
 
         # Numeric validations
         try:
@@ -576,7 +579,7 @@ class Myrcat:
             if (media_id := int(track_json.get("media_id", 0))) < 0:
                 return False, f"⚠️ Invalid media_id: {media_id}"
         except ValueError as e:
-            return False, f"Non-numeric value error: {e}"
+            return False, f"💥 Non-numeric value error: {e}"
 
         # Check string lengths are reasonable
         max_lens = {
