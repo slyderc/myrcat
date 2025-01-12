@@ -561,10 +561,11 @@ class Myrcat:
         """Validate incoming track data JSON."""
 
         # Check required fields exist
+        """
         required_fields = ["artist", "title", "starttime", "duration", "media_id"]
         if missing := required_fields - track_json.keys():
             return False, f"⛔️ Missing required fields: {', '.join(missing)}"
-
+        """
         # Skip empty/non-music content
         if not track_json.get("artist"):
             return False, "⛔️ Missing artist data!"
@@ -613,14 +614,14 @@ class Myrcat:
                 is_valid, message = self.validate_track_json(track_data)
 
                 if not is_valid:
-                    logging.debug(f"Skipping track: {message}")
+                    logging.info(f"⏩ Skipping new data: {message}")
                     return
 
                 await self.process_new_track(track_data)
             except json.JSONDecodeError as e:
                 logging.error(f"Invalid JSON: {e}\nRaw data: {data}")
         except Exception as e:
-            logging.error(f"Connection error: {e}")
+            logging.error(f"💥 JSON processing error: {e}")
         finally:
             writer.close()
             await writer.wait_closed()
