@@ -561,11 +561,10 @@ class Myrcat:
         """Validate incoming track data JSON."""
 
         # Check required fields exist
-        """
         required_fields = ["artist", "title", "starttime", "duration", "media_id"]
         if missing := required_fields - track_json.keys():
             return False, f"⛔️ Missing required fields: {', '.join(missing)}"
-        """
+
         # Skip empty/non-music content
         if not track_json.get("artist"):
             return False, "⛔️ Missing artist data!"
@@ -611,7 +610,7 @@ class Myrcat:
                 track_data = self.decode_json_data(data)
 
                 # Validate track data
-                is_valid, message = self.validate_track_json(track_data)
+                # is_valid, message = self.validate_track_json(track_data)
 
                 if not is_valid:
                     logging.info(f"⏩ Skipping new data: {message}")
