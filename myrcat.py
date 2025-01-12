@@ -93,11 +93,11 @@ class SocialMediaManager:
     def setup_lastfm(self):
         """Initialize Last.FM API connection using pylast."""
         try:
-            print(
+            #print(
                 "Current loggers:", [name for name in logging.root.manager.loggerDict]
-            )
-            print("Pylast logger level:", logging.getLogger("pylast").level)
-            print("Root logger level:", logging.root.level)
+            #)
+            #print("Pylast logger level:", logging.getLogger("pylast").level)
+            #print("Root logger level:", logging.root.level)
 
             lastfm_config = self.config["lastfm"]
             self.lastfm = pylast.LastFMNetwork(
@@ -425,9 +425,20 @@ class Myrcat:
         for logger_name in [
             "pylast",
             "urllib3",
-            "pylistenbrainz",
-            "requests",
+            "urllib3.util",
+            "urllib3.util.retry",
+            "urllib3.connection",
+            "urllib3.response",
             "urllib3.connectionpool",
+            "urllib3.poolmanager",
+            "requests",
+            "httpx",
+            "httpcore",
+            "httpcore.http11",
+            "httpcore.connection",
+            "httpcore.proxy",
+            "charset_normalizer",
+            "pylistenbrainz"
         ]:
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.CRITICAL)  # really mute them!
