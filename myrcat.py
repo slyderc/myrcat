@@ -490,7 +490,8 @@ class Myrcat:
 
             # Process artwork if provided
             if track.image:
-                await self.artwork.process_artwork(track.image)
+                new_filename = await self.artwork.process_artwork(track.image)
+                track.image = new_filename  # Update track object with the new filename
 
             # Update playlist
             await self.playlist.update_track(track)
@@ -505,6 +506,57 @@ class Myrcat:
         except Exception as e:
             logging.error(f"Error in track update processing: {e}")
 
+    def validate_track_data(self, track_data: Dict[str, Any]) -> tuple[bool, str]:
+        """Validate incoming track data.
+
+        Returns:
+            tuple[bool, str]: (is_valid, error_message)
+        """
+        # Skip empty/non-music content
+        if not track_data.get("artist") and not track_data.get("title"):
+            return False, "Empty artist and title - likely non-music content"
+
+        # Check required fields exist
+        required_fields = ["artist", "title", "starttime", "duration", "media_id"]
+        missing = [f for f in required_fields if not track_data.get(f)]
+        if missing:
+            return False, f"Missing required fields: {', '.join(missing)}"
+
+        # Validate duration and media_id
+        try:
+            duration = int(track_data.get("duration", 0))
+            if duration < 0:
+                return False, f"Invalid duration: {duration}"
+        except ValueError:
+            return False, f"Duration not numeric: {track_data.get('duration')}"
+
+        try:
+            media_id = int(track_data.get("media_id", 0))
+            if media_id < 0:
+                return False, f"Invalid media_id: {media_id}"
+        except ValueError:
+            return False, f"Media ID not numeric: {track_data.get('media_id')}"
+
+        # Check string lengths are reasonable
+        max_lengths = {
+            "artist": 200,
+            "title": 200,
+            "album": 200,
+            "publisher": 200,
+            "ISRC": 16,
+            "program": 100,
+            "presenter": 100,
+        }
+
+        for field, max_len in max_lengths.items():
+            if track_data.get(field) and len(str(track_data[field])) > max_len:
+                return False, f"{field} exceeds maximum length of {max_len}"
+
+        # Clean up title to remove (Remixed by DJ) or [feat. John Doe] or <2nd Artist>
+        track_data["title"] = re.split(r"[\(\[\<]", track_data["title"])[0].strip()
+
+        return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
+
     async def handle_client(self, reader, writer):
         """Handle incoming connection and JSON data."""
         try:
@@ -514,7 +566,21 @@ class Myrcat:
 
             # Parse JSON data
             try:
-                track_data = json.loads(data.decode())
+                # Clean up Windows-style paths in the JSON
+                cleaned_data = data.decode().replace("\\", "/")
+                track_data = json.loads(cleaned_data)
+
+                # Check if this is a meaningful track update
+                if not track_data.get("artist") and not track_data.get("title"):
+                    logging.debug("Skipping empty track metadata (likely a station ID)")
+                    return
+
+                # Validate track data
+                is_valid, message = self.validate_track_data(track_data)
+                if not is_valid:
+                    logging.debug(f"Skipping track: {message}")
+                    return
+
                 await self.process_track_update(track_data)
             except json.JSONDecodeError as e:
                 logging.error(f"Invalid JSON received: {e}\n{data}")
@@ -536,7 +602,7 @@ class Myrcat:
         )
 
         addr = server.sockets[0].getsockname()
-        logging.info(f"Serving on {addr}")
+        logging.info(f"Listening for Myriad on {addr}")
 
         async with server:
             await server.serve_forever()
