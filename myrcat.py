@@ -203,24 +203,22 @@ class SocialMediaManager:
     async def update_all_platforms(self, track: TrackInfo):
         """Update all configured social media platforms with track debug."""
         if not self.publish_enabled:
-            logging.debug("Social media publishing is disabled!")
+            logging.debug("⚠️ Social media publishing is disabled!")
             return
 
-        platforms = [
-            (self.update_lastfm, "Last.FM"),
-            (self.update_listenbrainz, "ListenBrainz"),
-            (self.update_bluesky, "Bluesky"),
-            (self.update_facebook, "Facebook"),
-        ]
+        updates = {
+            "Last.FM": self.update_lastfm,
+            "ListenBrainz": self.update_listenbrainz,
+            "Bluesky": self.update_bluesky,
+            "Facebook": self.update_facebook,
+        }
 
-        for update_func, platform_name in platforms:
-            if platform_name in self.disabled_services:
-                logging.debug(f"Skipping {platform_name} - disabled in config!")
-                continue
-            try:
-                await update_func(track)
-            except Exception as e:
-                logging.error(f"💥 Error updating {platform_name}: {e}")
+        for platform, update_func in updates.items():
+            if platform not in self.disabled_services:
+                try:
+                    await update_func(track)
+                except Exception as e:
+                    logging.error(f"💥 Error updating {platform}: {e}")
 
 
 class DatabaseManager:
@@ -260,32 +258,22 @@ class DatabaseManager:
     async def log_track(self, track: TrackInfo):
         """Log track play to database for SoundExchange reporting."""
         try:
+            query = """
+                INSERT INTO playouts (
+                    artist, title, album, publisher, year, isrc,
+                    starttime, duration, media_id, program,
+                    presenter, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """
             with sqlite3.connect(self.db_path) as conn:
-                conn.execute(
-                    """
-                    INSERT INTO playouts (
-                        artist, title, album, year, publisher, isrc,
-                        starttime, duration, media_id, program,
-                        presenter, timestamp
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        track.artist,
-                        track.title,
-                        track.album,
-                        track.year,
-                        track.publisher,
-                        track.isrc,
-                        track.starttime,
-                        track.duration,
-                        track.media_id,
-                        track.program,
-                        track.presenter,
-                        track.timestamp,
-                    ),
-                )
-            logging.debug(f"📈 Logged to database")
-        except Exception as e:
+                conn.execute(query, (
+                    track.artist, track.title, track.album,
+                    track.publisher, track.year, track.isrc, track.starttime,
+                    track.duration, track.media_id, track.program,
+                    track.presenter
+                ))
+                logging.debug(f"📈 Logged to database")
+            except Exception as e:
             logging.error(f"💥 Database error: {e}")
             # Add more detailed error logging
             if isinstance(e, sqlite3.OperationalError):
@@ -484,26 +472,26 @@ class Myrcat:
         """Check if track should be skipped based on artist or title."""
         return any([artist in self.skip_artists, title in self.skip_titles])
 
-    async def process_track_update(self, track_data: Dict[str, Any]):
+    async def process_new_track(self, track_json: Dict[str, Any]):
         """We come here after validating the JSON data."""
         try:
-            duration = int(track_data.get("duration", 0))
+            duration = int(track_json.get("duration", 0))
 
             # Create TrackInfo object
             track = TrackInfo(
-                artist=track_data["artist"],
-                title=re.split(r"[\(\[\<]", track_data["title"])[0].strip(),
-                album=track_data.get("album"),
-                year=int(track_data.get("year", 0)) if track_data.get("year") else None,
-                publisher=track_data.get("publisher"),
-                isrc=track_data.get("ISRC"),
-                image=track_data.get("image"),
-                starttime=track_data["starttime"],
+                artist=track_json["artist"],
+                title=re.split(r"[\(\[\<]", track_json["title"])[0].strip(),
+                album=track_json.get("album"),
+                year=int(track_json.get("year", 0)) if track_json.get("year") else None,
+                publisher=track_json.get("publisher"),
+                isrc=track_json.get("ISRC"),
+                image=track_json.get("image"),
+                starttime=track_json["starttime"],
                 duration=duration,
-                type=track_data["type"],
-                media_id=track_data["media_id"],
-                program=track_data.get("program"),
-                presenter=track_data.get("presenter"),
+                type=track_json["type"],
+                media_id=track_json["media_id"],
+                program=track_json.get("program"),
+                presenter=track_json.get("presenter"),
             )
 
             logging.info(f"🎹 {track.title} [{track.year}]")
@@ -530,7 +518,7 @@ class Myrcat:
                 # Make sure we don't delay longer than track duration
                 if duration and duration < delay_seconds:
                     logging.warning(
-                        f"Track duration ({duration}s) is shorter than publish_delay ({delay_seconds}s), adjusting delay"
+                        f"⚠️ Adjusting track duration ({duration}s) is shorter than publish_delay ({delay_seconds}s)"
                     )
                     delay_seconds = max(
                         1, duration - 5
@@ -560,95 +548,67 @@ class Myrcat:
         except Exception as e:
             logging.error(f"💥 Error in track update processing: {e}")
 
-    def validate_track_data(self, track_data: Dict[str, Any]) -> tuple[bool, str]:
-        """Validate incoming track data.
+    def validate_track_json(self, track_json: Dict[str, Any]) -> tuple[bool, str]:
+        """Validate incoming track data JSON."""
 
-        Returns:
-            tuple[bool, str]: (is_valid, error_message)
-        """
         # Skip empty/non-music content
-        if not track_data.get("artist") and not track_data.get("title"):
+        if not track_json.get("artist") and not track_json.get("title"):
             return False, "⚠️ No artist or title data!"
 
         # Check required fields exist
         required_fields = ["artist", "title", "starttime", "duration", "media_id"]
-        missing = [f for f in required_fields if not track_data.get(f)]
-        if missing:
+        if missing := required_fields - track_json.keys():
             return False, f"⚠️ Missing required fields: {', '.join(missing)}"
 
-        # Validate duration and media_id
+        # Numeric validations
         try:
-            duration = int(track_data.get("duration", 0))
-            if duration < 0:
+            if (duration := int(track_json.get("duration", 0))) < 0:
                 return False, f"⚠️ Invalid duration: {duration}"
-        except ValueError:
-            return False, f"⚠️ Duration not numeric: {track_data.get('duration')}"
-
-        try:
-            media_id = int(track_data.get("media_id", 0))
-            if media_id < 0:
+            if (media_id := int(track_json.get("media_id", 0))) < 0:
                 return False, f"⚠️ Invalid media_id: {media_id}"
-        except ValueError:
-            return False, f"⚠️ Media ID not numeric: {track_data.get('media_id')}"
+        except ValueError as e:
+            return False, f"Non-numeric value error: {e}"
 
         # Check string lengths are reasonable
-        max_lengths = {
-            "artist": 200,
-            "title": 200,
-            "album": 200,
-            "publisher": 200,
-            "ISRC": 16,
-            "program": 100,
-            "presenter": 100,
-        }
+        max_lens = {"artist": 256, "title": 256, "album": 256,
+                    "publisher": 256, "ISRC": 16, "program": 128,
+                    "presenter": 128}
 
-        for field, max_len in max_lengths.items():
-            if track_data.get(field) and len(str(track_data[field])) > max_len:
-                return False, f"⚠️ {field} exceeds maximum length of {max_len}"
+        if oversized := [f for f, max_len in max_lens.items()
+                        if track_json.get(f) and len(str(track_json[f])) > max_len]:
+            return False, f"Fields exceed max length: {', '.join(oversized)}"
 
-        return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
+            return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
 
-    async def handle_client(self, reader, writer):
+    async def myriad_connected(self, reader, writer):
         """Handle incoming connections and JSON data."""
         try:
-            data = await reader.read()
-            if not data:
+            if not (data := await reader.read()):
                 return
-
-            # Parse JSON data
             try:
-                try:
-                    decoded_data = data.decode("utf-8")
-                except UnicodeDecodeError:
-                    # Specifically handle Windows-1252 encoding
-                    decoded_data = data.decode("cp1252")  # Windows-1252 encoding
-
-                # Clean up Windows-style paths in the JSON
-                cleaned_data = data.decode().replace("\\", "/")
-                track_data = json.loads(cleaned_data)
-
-                # Validate track data
-                is_valid, message = self.validate_track_data(track_data)
-                if not is_valid:
-                    logging.debug(f"Invalid track metadata: {message}")
-                    return
-
-                await self.process_track_update(track_data)
+                track_data = self.decode_json_data(data)
+                await self.process_new_track(track_data)
             except json.JSONDecodeError as e:
-                logging.error(f"💥 Invalid JSON received: {e}\n{data}")
-            except Exception as e:
-                logging.error(f"💥 Error processing data: {e}")
-
+                logging.error(f"Invalid JSON: {e}\nRaw data: {data}")
+        except Exception as e:
+            logging.error(f"Connection error: {e}")
+        finally:
             writer.close()
             await writer.wait_closed()
 
-        except Exception as e:
-            logging.error(f"💥 Error handling client connection: {e}")
+    def decode_json_data(self, data: bytes) -> Dict[str, Any]:
+        """Decode and parse track data."""
+        try:
+            decoded = data.decode('utf-8')
+        except UnicodeDecodeError:
+            decoded = data.decode('cp1252')
 
-    async def run_server(self):
+        return json.loads(decoded.replace('\\', '/'))  # Replace Windows file paths
+
+    async def start_server(self):
         """Start the socket server."""
         server = await asyncio.start_server(
-            self.handle_client,
+            self.myriad_connected,
             host=self.config["server"]["host"],
             port=int(self.config["server"]["port"]),
         )
@@ -662,7 +622,7 @@ class Myrcat:
     def run(self):
         """Main entry point for running the server."""
         try:
-            asyncio.run(self.run_server())
+            asyncio.run(self.start_server())
         except KeyboardInterrupt:
             logging.info("🔪 Killing server!")
         except Exception as e:
@@ -687,7 +647,7 @@ if __name__ == "__main__":
 
     app = Myrcat(args.config)
     try:
-        asyncio.run(app.run_server())
+        asyncio.run(app.start_server())
     except KeyboardInterrupt:
         logging.info("🔴 Shutting down!")
     except Exception as e:
