@@ -621,7 +621,7 @@ class Myrcat:
                 track_data = json.loads(cleaned_data)
 
                 # Validate track data
-                is_valid, message = self.validate_track_data(track_data)
+                is_valid, message = self.validate_track_json(track_data)
                 if not is_valid:
                     logging.debug(f"Invalid track metadata: {message}")
                     return
