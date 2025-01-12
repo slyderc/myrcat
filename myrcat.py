@@ -23,10 +23,10 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 # Social media modules
+import pylast
 import pylistenbrainz
 from atproto import Client as AtprotoClient
 from facebook import GraphAPI
-import pylast
 
 
 @dataclass
@@ -608,6 +608,14 @@ class Myrcat:
                 return
             try:
                 track_data = self.decode_json_data(data)
+
+                # Validate track data
+                is_valid, message = self.validate_track_data(track_data)
+
+                if not is_valid:
+                    logging.debug(f"Skipping track: {message}")
+                    return
+
                 await self.process_new_track(track_data)
             except json.JSONDecodeError as e:
                 logging.error(f"Invalid JSON: {e}\nRaw data: {data}")
