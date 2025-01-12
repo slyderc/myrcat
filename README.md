@@ -1,3 +1,5 @@
+![Myrcat Logo](Myrcat_logo.png)
+
 # Myrcat - Myriad Cataloger - Now Wave Radio's Playout Publisher
 
 🐾🎶 Myrcat is an automation script that interfaces with Myriad Playout to record, publish, and track play-outs to a local database and various social media platforms for Now Wave Radio.
