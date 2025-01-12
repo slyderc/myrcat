@@ -200,7 +200,7 @@ class SocialMediaManager:
         except Exception as e:
             logging.error(f"💥 Facebook update error: {e}")
 
-    async def update_all_platforms(self, track: TrackInfo):
+    async def update_social_media(self, track: TrackInfo):
         """Update all configured social media platforms with track debug."""
         if not self.publish_enabled:
             logging.debug("⚠️ Social media publishing is disabled!")
@@ -255,7 +255,7 @@ class DatabaseManager:
             """
             )
 
-    async def log_track(self, track: TrackInfo):
+    async def log_db_playout(self, track: TrackInfo):
         """Log track play to database for SoundExchange reporting."""
         try:
             query = """
@@ -287,7 +287,7 @@ class DatabaseManager:
             logging.error(f"💥 Database error: {e}")
             # Add more detailed error logging
             if isinstance(e, sqlite3.OperationalError):
-                logging.error(f"💥 SQLite operational error details: {str(e)}")
+                logging.error(f"💥 SQLite DB error details: {str(e)}")
 
 
 class ArtworkManager:
@@ -307,30 +307,38 @@ class ArtworkManager:
         incoming_path = self.incoming_dir / filename
 
         # Wait for up to 5 seconds for the file to appear
+
+        if not await self.wait_for_file():
+            logging.warning(f"⚠️ Artwork file missing: {incoming_path}")
+            return None
+
+        try:
+            # Generate unique filename
+            new_filename = f"{uuid.uuid4()}.jpg"
+            publish_path = self.publish_dir / new_filename
+
+            # Copy file to web server with unique name
+            shutil.copy2(str(incoming_path), str(publish_path))
+            # Remove original MYR12345.jpg from Myriad FTP
+            incoming_path.unlink()
+            # Update current image
+            self.current_image = new_filename
+            # Clean up old files from web server directory
+            await self.cleanup_old_artwork()
+
+            logging.debug(f"🎨 Artwork published: {new_filename}")
+            return new_filename
+        except Exception as e:
+            logging.error(f"💥 Error processing artwork: {e}")
+            return None
+
+    async def wait_for_file() -> bool:
+        """Wait for file to appear, return True if found."""
         for _ in range(10):
             if incoming_path.exists():
-                try:
-                    # Generate unique filename
-                    new_filename = f"{uuid.uuid4()}.jpg"
-                    publish_path = self.publish_dir / new_filename
-
-                    # Copy file with new name and remove original
-                    shutil.copy2(str(incoming_path), str(publish_path))
-                    incoming_path.unlink()
-
-                    # Update current image and clean up old files
-                    self.current_image = new_filename
-                    await self.cleanup_old_artwork()
-
-                    logging.debug(f"🎨 Artwork published: {new_filename}")
-                    return new_filename
-                except Exception as e:
-                    logging.error(f"💥 Error processing artwork: {e}")
-                    return None
+                return True
             await asyncio.sleep(0.5)
-
-        logging.warning(f"⚠️ Artwork missing after waiting: {incoming_path}")
-        return None
+        return False
 
     async def cleanup_old_artwork(self) -> None:
         """Remove old artwork files from publish directory."""
@@ -546,10 +554,10 @@ class Myrcat:
             await self.playlist.update_track(track)
 
             # Log to database
-            await self.db.log_track(track)
+            await self.db.log_db_playout(track)
 
             # Update social media
-            await self.social.update_all_platforms(track)
+            await self.social.update_social_media(track)
 
             self.last_processed_track = track
 
@@ -562,12 +570,11 @@ class Myrcat:
 
         if not track_json:
             return False, "⛔️ No JSON track data received!"
-        required_keys = {"artist", "title", "starttime", "duration", "media_id"}
-        missing_keys = required_keys - track_json.keys()
-        if missing_keys:
-            return False, f"⛔️ Missing required keys: {', '.join(missing_keys)}"
 
-        # Skip empty/non-music content
+        required_keys = {"artist", "title", "starttime", "duration", "media_id"}
+        if missing := required_keys - track_json.keys():
+            return False, f"⛔️ Missing required fields: {', '.join(missing)}"
+
         if not track_json.get("artist"):
             return False, "⛔️ Missing artist data!"
 
@@ -630,7 +637,7 @@ class Myrcat:
             try:
                 track_data = self.decode_json_data(data)
 
-                # Validate track data
+                # Validate JSON from Myriad containing track data
                 is_valid, message = self.validate_track_json(track_data)
                 if not is_valid:
                     logging.debug(f"Invalid track metadata: {message}")
