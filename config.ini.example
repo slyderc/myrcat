@@ -14,7 +14,8 @@ incoming_directory = incoming
 publish_directory = publish
 
 [web]
-playlist_path = playlist.json
+playlist_json = playlist.json
+playlist_txt = playlist.txt
 
 [lastfm]
 api_key =
