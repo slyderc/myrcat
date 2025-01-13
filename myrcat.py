@@ -49,6 +49,62 @@ class TrackInfo:
     timestamp: datetime = datetime.now()
 
 
+@dataclass
+class ShowInfo:
+    """Show information storage."""
+
+    title: str
+    presenter: str
+    start_time: datetime
+    end_time: datetime
+    description: Optional[str] = None
+    artwork: Optional[str] = None
+    genre: Optional[str] = None
+    social_tags: Optional[list[str]] = None
+
+
+class ShowHandler:
+    """Manages radio show transitions and announcements."""
+
+    def __init__(self, config: configparser.ConfigParser):
+        self.config = config
+        self.current_show: Optional[ShowInfo] = None
+        # Maybe load schedule from config or external file
+        self.schedule = self.load_schedule()
+
+    async def check_show_transition(self, track: TrackInfo) -> bool:
+        """Check if we're transitioning to a new show."""
+        if not track.program:
+            return False
+
+        # If this is a different show than current
+        if not self.current_show or track.program != self.current_show.title:
+            new_show = self.get_show_info(track.program)
+            if new_show:
+                await self.handle_show_transition(new_show)
+                return True
+        return False
+
+    async def handle_show_transition(self, new_show: ShowInfo):
+        """Handle transition to a new show."""
+        # Announce show ending if there was one
+        if self.current_show:
+            await self.announce_show_end(self.current_show)
+
+        # Announce new show
+        await self.announce_show_start(new_show)
+        self.current_show = new_show
+
+    async def announce_show_start(self, show: ShowInfo):
+        """Create social media posts for show start."""
+        # Create show start announcements
+        post_text = f"📻 Now Starting on Now Wave Radio:\n{show.title}"
+        if show.presenter:
+            post_text += f"\nWith {show.presenter}"
+        if show.description:
+            post_text += f"\n\n{show.description}"
+
+
 class SocialMediaManager:
     """Handles social media platform updates."""
 
@@ -360,18 +416,18 @@ class ArtworkManager:
 class PlaylistManager:
     """Manages playlist.json updates and current track debugrmation."""
 
-    def __init__(self, playlist_path: Path, artwork_publish_path: Path):
-        """Initialize PlaylistManager.
-
-        Args:
-            playlist_path: Path to the playlist.json file
-        """
-        self.playlist_path = playlist_path
+    def __init__(
+        self, playlist_json: Path, playlist_txt: Path, artwork_publish_path: Path
+    ):
+        """Handles JSON and TXT playlist files."""
+        self.playlist_json = playlist_json
+        self.playlist_txt = playlist_txt
         self.artwork_publish_path = artwork_publish_path
         self.current_track: Optional[TrackInfo] = None
 
-        # Ensure parent directory exists
-        self.playlist_path.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure parent directories exists
+        self.playlist_json.parent.mkdir(parents=True, exist_ok=True)
+        self.playlist_txt.parent.mkdir(parents=True, exist_ok=True)
 
     async def update_track(self, track: TrackInfo) -> None:
         """Update current track and playlist file.
@@ -382,11 +438,12 @@ class PlaylistManager:
         try:
             self.current_track = track
             await self.update_playlist_json(track)
+            await self.update_playlist_txt(track)
         except Exception as e:
             logging.error(f"💥 Error updating track: {e}")
 
     async def update_playlist_json(self, track: TrackInfo) -> None:
-        """Update the playlist.json file with current track information."""
+        """Update the JSON playlist file with current track information."""
         try:
             playlist_data = {
                 "artist": track.artist,
@@ -398,12 +455,22 @@ class PlaylistManager:
             }
 
             # Write JSON file with proper indentation for readability
-            with open(self.playlist_path, "w") as f:
+            with open(self.playlist_json, "w") as f:
                 json.dump(playlist_data, f, indent=4)
 
-            logging.debug("💾 Saved new playlist file")
+            logging.debug("💾 Saved new JSON playlist file")
         except Exception as e:
-            logging.error(f"💥 Error updating playlist: {e}")
+            logging.error(f"💥 Error updating JSON playlist: {e}")
+
+    async def update_playlist_txt(self, track: TrackInfo) -> None:
+        """Update the TXT playlist file with current track information."""
+        try:
+            with open(self.playlist_txt, "w") as txt_file:
+                txt_file.write(f"{track.artist} - {track.title}\n")
+
+            logging.debug("💾 Saved new TXT playlist file")
+        except Exception as e:
+            logging.error(f"💥 Error updating TXT playlist: {e}")
 
 
 class Myrcat:
@@ -462,11 +529,14 @@ class Myrcat:
         # Initialize paths
         self.artwork_incoming = Path(self.config["artwork"]["incoming_directory"])
         self.artwork_publish = Path(self.config["artwork"]["publish_directory"])
-        self.playlist_path = Path(self.config["web"]["playlist_path"])
+        self.playlist_json = Path(self.config["web"]["playlist_json"])
+        self.playlist_txt = Path(self.config["web"]["playlist_txt"])
 
         # Initialize components
         self.db = DatabaseManager(self.config["general"]["database_path"])
-        self.playlist = PlaylistManager(self.playlist_path, self.artwork_publish)
+        self.playlist = PlaylistManager(
+            self.playlist_json, self.playlist_txt, self.artwork_publish
+        )
         self.artwork = ArtworkManager(self.artwork_incoming, self.artwork_publish)
         self.social = SocialMediaManager(self.config)
 

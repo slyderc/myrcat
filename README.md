@@ -2,7 +2,7 @@
 
 # Myrcat - Myriad Cataloger - Now Wave Radio's Playout Publisher
 
-🐾🎶 Myrcat is an automation script that interfaces with Myriad Playout to record, publish, and track play-outs to a local database and various social media platforms for Now Wave Radio.
+🐾🎶 **Myrcat** is a tool for radio stations running the Myriad Playout software from Broadcast Radio.  It helps streamline radio station operations by integrating track management, social media updates, and more, all in one tool.  Primarily developed for Now Wave Radio's needs, the script can be easily modified to fit other requirements.
 
 ## Features
 
