@@ -702,8 +702,12 @@ class Myrcat:
 
     async def myriad_connected(self, reader, writer):
         """Handle incoming connections and process datastream."""
+        peer = writer.get_extra_info("peername")
+        logging.debug(f"🔌 Connection from {peer}")
+
         try:
             if not (data := await reader.read()):
+                logging.debug(f"📪 Empty data from {peer}")
                 return
             try:
                 track_data = self.decode_json_data(data)
@@ -716,26 +720,41 @@ class Myrcat:
 
                 await self.process_new_track(track_data)
             except json.JSONDecodeError as e:
-                logging.error(f"💥 Invalid JSON: {e}\nRaw data: {data}")
+                logging.error(f"💥 Invalid JSON from {peer}: {e}\nRaw data: {data}")
+            except ConnectionResetError as e:
+                logging.error(f"🔌 Connection reset from {peer}: {e}")
+            except ConnectionError as e:
+                logging.error(f"🔌 Connection error from {peer}: {e}")
         except Exception as e:
-            logging.error(f"💥 Error processing data: {e}")
+            logging.error(f"💥 Error processing data from {peer}: {e}")
         finally:
-            writer.close()
-            await writer.wait_closed()
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except ConnectionError:
+                logging.debug(f"🔌 Connection already closed for {peer}")
 
     async def start_server(self):
-        """Start the socket server."""
-        server = await asyncio.start_server(
-            self.myriad_connected,
-            host=self.config["server"]["host"],
-            port=int(self.config["server"]["port"]),
-        )
+        """Start the socket server with connection retry."""
+        while True:
+            try:
+                server = await asyncio.start_server(
+                    self.myriad_connected,
+                    host=self.config["server"]["host"],
+                    port=int(self.config["server"]["port"]),
+                )
 
-        addr = server.sockets[0].getsockname()
-        logging.info(f"🟢 Listening for Myriad on {addr}")
+                addr = server.sockets[0].getsockname()
+                logging.info(f"🟢 Listening for Myriad on {addr}")
 
-        async with server:
-            await server.serve_forever()
+                async with server:
+                    await server.serve_forever()
+            except ConnectionError as e:
+                logging.error(f"🔌 Server connection error: {e}")
+                await asyncio.sleep(3)  # Wait before retry
+            except Exception as e:
+                logging.error(f"💥 Server error: {e}")
+                await asyncio.sleep(3)  # Wait before retry
 
     def run(self):
         """Main entry point for running the server."""
