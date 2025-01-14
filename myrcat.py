@@ -587,7 +587,7 @@ class Myrcat:
 
             # Check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
-                logging.debug(f"⛔️ Skipping - filted in config!")
+                logging.info(f"⛔️ Skipping - filtered in config!")
                 return
 
             # Check for duplicate track, in case we're messing with Myriad OCP
@@ -697,8 +697,18 @@ class Myrcat:
                     "utf-8", errors="replace"
                 )  # Replace invalid characters
                 logging.debug("Invalid characters replaced with placeholders.")
+
+        # Perform additioanl clean-up: quote quotes(") etc.
         decoded = decoded_data.replace("\\", "/")
-        return json.loads(decoded)
+        decoded = re.sub(r':\s*"([^"]*)"([^"]*)"([^"]*)"', r': "\1\\"\2\\"\3"', decoded)
+
+        try:
+            return json.loads(decoded)
+        except json.JSONDecodeError as e:
+            logging.error(f"💥 JSON parsing failed: {e}")
+            # Log the problematic data for debugging
+            logging.debug(f"Problematic JSON: {decoded}")
+            raise
 
     async def myriad_connected(self, reader, writer):
         """Handle incoming connections and process datastream."""
@@ -715,7 +725,7 @@ class Myrcat:
                 # Validate JSON from Myriad containing track data
                 is_valid, message = self.validate_track_json(track_data)
                 if not is_valid:
-                    logging.debug(f"Invalid track metadata: {message}")
+                    logging.info(f"⛔️ Track metadata: {message}")
                     return
 
                 await self.process_new_track(track_data)
