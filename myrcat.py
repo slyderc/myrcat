@@ -640,17 +640,16 @@ class Myrcat:
         """Validate incoming track data JSON."""
 
         if not track_json:
-            return False, "⛔️ No JSON track data received!"
+            return False, "No JSON track data received!"
 
         required_keys = {"artist", "title", "starttime", "duration", "media_id"}
         if missing := required_keys - track_json.keys():
-            return False, f"⛔️ Missing required fields: {', '.join(missing)}"
+            return False, f"Missing required fields: {', '.join(missing)}"
 
-        if not track_json.get("artist"):
-            return False, "⛔️ Missing artist data!"
-
-        if not track_json.get("title"):
-            return False, "⛔️ Missing title data!"
+        required_fields = ["artist", "title"]
+        for field in required_fields:
+            if not track_json.get(field):
+                return False, f"Missing {field}!  Skipping."
 
         # Numeric validations
         try:
@@ -727,7 +726,7 @@ class Myrcat:
                 # Validate JSON from Myriad containing track data
                 is_valid, message = self.validate_track_json(track_data)
                 if not is_valid:
-                    logging.info(f"⛔️ Track metadata: {message}")
+                    logging.info(f"⛔️ Received data error: {message}")
                     return
 
                 await self.process_new_track(track_data)
