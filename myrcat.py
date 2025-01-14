@@ -698,15 +698,17 @@ class Myrcat:
                 )  # Replace invalid characters
                 logging.debug("Invalid characters replaced with placeholders.")
 
-        # Perform additioanl clean-up: quote quotes(") etc.
-        decoded = decoded_data.replace("\r\n", "\n").replace("\r", "\n")
+        # Perform additioanl clean-up: quote quotes(") & strip ctrl-chars. except space
+        decoded = "".join(
+            char for char in decoded_data if char >= " " or char in ["\n"]
+        )
         decoded = decoded_data.replace("\\", "/")
         decoded = re.sub(r':\s*"([^"]*)"([^"]*)"([^"]*)"', r': "\1\\"\2\\"\3"', decoded)
 
         try:
             return json.loads(decoded)
         except json.JSONDecodeError as e:
-            logging.error(f"💥 JSON parsing failed: {e}")
+            logging.error(f"💥 JSON parsing failed: {e}\nJSON is: {decoded}")
             # Log the problematic data for debugging
             logging.debug(f"Problematic JSON: {decoded}")
             raise
@@ -731,7 +733,7 @@ class Myrcat:
 
                 await self.process_new_track(track_data)
             except json.JSONDecodeError as e:
-                logging.error(f"💥 Invalid JSON from {peer}: {e}\nRaw data: {data}")
+                logging.error(f"💥 Metadata failure from {peer}: {e}\nRaw data: {data}")
             except ConnectionResetError as e:
                 logging.error(f"🔌 Connection reset from {peer}: {e}")
             except ConnectionError as e:
