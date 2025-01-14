@@ -699,6 +699,7 @@ class Myrcat:
                 logging.debug("Invalid characters replaced with placeholders.")
 
         # Perform additioanl clean-up: quote quotes(") etc.
+        decoded = decoded_data.replace("\r\n", "\n").replace("\r", "\n")
         decoded = decoded_data.replace("\\", "/")
         decoded = re.sub(r':\s*"([^"]*)"([^"]*)"([^"]*)"', r': "\1\\"\2\\"\3"', decoded)
 
