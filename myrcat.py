@@ -703,7 +703,6 @@ class Myrcat:
             char for char in decoded_data if char >= " " or char in ["\n"]
         )
         decoded = decoded_data.replace("\\", "/")
-        decoded = re.sub(r':\s*"([^"]*)"([^"]*)"([^"]*)"', r': "\1\\"\2\\"\3"', decoded)
 
         try:
             return json.loads(decoded)
