@@ -532,6 +532,11 @@ class Myrcat:
         self.playlist_json = Path(self.config["web"]["playlist_json"])
         self.playlist_txt = Path(self.config["web"]["playlist_txt"])
 
+        if self.skip_artists:
+            logging.warning(f"⚠️ : Ignoring artists {skip_artists}")
+        if self.skip_titles:
+            logging.warning(f"⚠️ : Ignoring titles {skip_titles}")
+
         # Initialize components
         self.db = DatabaseManager(self.config["general"]["database_path"])
         self.playlist = PlaylistManager(
@@ -619,16 +624,15 @@ class Myrcat:
             # Update playlist file on web server
             await self.playlist.update_track(track)
 
-            # Log to database
-            await self.db.log_db_playout(track)
-
-            # Update social media
-            # Check if track should be skipped
+            # Update social media but check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
                 logging.info(f"⛔️ Skipping socials - filtered in config!")
                 return
             else:
                 await self.social.update_social_media(track)
+
+            # Log to database
+            await self.db.log_db_playout(track)
 
             self.last_processed_track = track
 
