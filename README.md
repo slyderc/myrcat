@@ -159,3 +159,4 @@ MIT License - See LICENSE file for details.
 
 For issues or questions, please file an issue on GitHub or contact:
 - website:  NowWave.Radio
+- email: studio isattheaddress nowwave.radio!
