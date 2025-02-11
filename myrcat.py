@@ -533,9 +533,9 @@ class Myrcat:
         self.playlist_txt = Path(self.config["web"]["playlist_txt"])
 
         if self.skip_artists:
-            logging.warning(f"⚠️ : Ignoring artists {skip_artists}")
+            logging.warning(f"⚠️ : Ignoring artists {self.skip_artists}")
         if self.skip_titles:
-            logging.warning(f"⚠️ : Ignoring titles {skip_titles}")
+            logging.warning(f"⚠️ : Ignoring titles {self.skip_titles}")
 
         # Initialize components
         self.db = DatabaseManager(self.config["general"]["database_path"])
