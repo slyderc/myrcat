@@ -45,4 +45,6 @@ publish/
 test/
 test.sh
 dev.ini
-
+skip_artists.txt
+skip_titles.txt
+config.ini
