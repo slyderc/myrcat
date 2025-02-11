@@ -533,9 +533,9 @@ class Myrcat:
         self.playlist_txt = Path(self.config["web"]["playlist_txt"])
 
         if self.skip_artists:
-            logging.warning(f"⚠️ : Ignoring artists {self.skip_artists}")
+            logging.warning(f"⚠️ : Artists are being skipped")
         if self.skip_titles:
-            logging.warning(f"⚠️ : Ignoring titles {self.skip_titles}")
+            logging.warning(f"⚠️ : Titles are being skipped")
 
         # Initialize components
         self.db = DatabaseManager(self.config["general"]["database_path"])
@@ -550,7 +550,6 @@ class Myrcat:
         if not file_path.exists():
             logging.warning(f"⚠️ Skip list file not found: {file_path}")
             return []
-
         try:
             with open(file_path) as f:
                 return [
@@ -564,7 +563,7 @@ class Myrcat:
 
     def should_skip_track(self, title: str, artist: str) -> bool:
         """Check if track should be skipped based on artist or title."""
-        return any([artist in self.skip_artists, title in self.skip_titles])
+        return any([title in self.skip_titles, artist in self.skip_artists])
 
     async def process_new_track(self, track_json: Dict[str, Any]):
         """We come here after validating the JSON data."""
@@ -606,10 +605,10 @@ class Myrcat:
                 # Make sure we don't delay longer than track duration
                 if duration and duration < delay_seconds:
                     logging.warning(
-                        f"⚠️ Adjusting track duration ({duration}s) is shorter than publish_delay ({delay_seconds}s)"
+                        f"⚠️ Adjusting track duration - ({duration}s) is shorter than publish_delay ({delay_seconds}s)"
                     )
                     delay_seconds = max(
-                        1, duration - 5
+                        2, duration - 5
                     )  # Leave at least 5s before next track
                 logging.debug(
                     f"⏱️ Delaying track processing for {delay_seconds} seconds"
