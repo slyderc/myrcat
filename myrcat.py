@@ -585,11 +585,6 @@ class Myrcat:
 
             logging.info(f'"{track.title}" [{track.year}] - {track.artist}')
 
-            # Check if track should be skipped
-            if self.should_skip_track(track.title, track.artist):
-                logging.info(f"⛔️ Skipping - filtered in config!")
-                return
-
             # Check for duplicate track, in case we're messing with Myriad OCP
             if (
                 self.last_processed_track
@@ -628,7 +623,12 @@ class Myrcat:
             await self.db.log_db_playout(track)
 
             # Update social media
-            await self.social.update_social_media(track)
+            # Check if track should be skipped
+            if self.should_skip_track(track.title, track.artist):
+                logging.info(f"⛔️ Skipping socials - filtered in config!")
+                return
+            else:
+                await self.social.update_social_media(track)
 
             self.last_processed_track = track
 
