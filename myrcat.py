@@ -13,6 +13,7 @@ import configparser
 import time
 import json
 import uuid
+import hashlib
 import logging
 import sqlite3
 import shutil
