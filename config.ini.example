@@ -13,6 +13,10 @@ port = 8080
 incoming_directory = incoming
 publish_directory = publish
 
+[artwork_hash]
+enabled = true
+directory = ca
+
 [web]
 playlist_json = playlist.json
 playlist_txt = playlist.txt

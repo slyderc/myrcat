@@ -350,11 +350,21 @@ class DatabaseManager:
 class ArtworkManager:
     """Manages artwork file operations."""
 
-    def __init__(self, incoming_dir: Path, publish_dir: Path):
+    def __init__(
+        self,
+        incoming_dir: Path,
+        publish_dir: Path,
+        hashed_artwork_dir: Optional[Path] = None,
+    ):
         self.incoming_dir = incoming_dir
         self.publish_dir = publish_dir
+        self.hashed_artwork_dir = hashed_artwork_dir
         self.current_image: Optional[str] = None
+
+        # Create directories if they don't exist
         self.publish_dir.mkdir(parents=True, exist_ok=True)
+        if self.hashed_artwork_dir:
+            self.hashed_artwork_dir.mkdir(parents=True, exist_ok=True)
 
     async def process_artwork(self, filename: str) -> Optional[str]:
         """Process artwork file with unique name and clean up old files."""
@@ -364,7 +374,6 @@ class ArtworkManager:
         incoming_path = self.incoming_dir / filename
 
         # Wait for up to 5 seconds for the file to appear
-
         if not await self.wait_for_file(incoming_path):
             logging.warning(f"⚠️ Artwork file missing: {incoming_path}")
             return None
@@ -389,6 +398,50 @@ class ArtworkManager:
             logging.error(f"💥 Error processing artwork: {e}")
             return None
 
+    async def create_hashed_artwork(
+        self, filename: str, artist: str, title: str
+    ) -> Optional[str]:
+        """Create a hashed version of the artwork using artist and title.
+
+        Args:
+            filename: The original artwork filename
+            artist: The track artist
+            title: The track title
+
+        Returns:
+            str: The hash used for the artwork file
+        """
+        if not filename or not self.hashed_artwork_dir:
+            return None
+
+        # Generate hash from artist and title
+        artwork_hash = self.generate_hash(artist, title)
+
+        # Path to original artwork
+        original_artwork = self.publish_dir / filename
+
+        # Ensure the file exists before trying to copy it
+        if not original_artwork.exists():
+            logging.warning(
+                f"⚠️ Original artwork not found for hashing: {original_artwork}"
+            )
+            return artwork_hash
+
+        try:
+            # Create hashed artwork filename
+            hashed_filename = f"{artwork_hash}.jpg"
+            hashed_artwork_path = self.hashed_artwork_dir / hashed_filename
+
+            # Only copy if the hashed file doesn't already exist
+            if not hashed_artwork_path.exists():
+                shutil.copy2(str(original_artwork), str(hashed_artwork_path))
+                logging.debug(f"🎨 Created hashed artwork: {hashed_filename}")
+
+            return artwork_hash
+        except Exception as e:
+            logging.error(f"💥 Error creating hashed artwork: {e}")
+            return artwork_hash  # Still return the hash even if file operation fails
+
     async def wait_for_file(self, incoming_path: Path) -> bool:
         """Wait for file to appear, return True if found."""
         for _ in range(10):
@@ -397,6 +450,21 @@ class ArtworkManager:
             await asyncio.sleep(0.5)
         logging.debug(f"⚠️ wait_for_file failed on {incoming_path}")
         return False
+
+    def generate_hash(self, artist, title):
+        """
+        Generate a hash from artist and title that matches the JavaScript implementation.
+        This ensures compatibility between the web player and the server.
+        """
+        str_to_hash = f"{artist}-{title}".lower()
+        hash_val = 0
+        for i in range(len(str_to_hash)):
+            hash_val = ((hash_val << 5) - hash_val) + ord(str_to_hash[i])
+            hash_val = (
+                hash_val & 0xFFFFFFFF
+            )  # Convert to 32bit integer (equivalent to |= 0 in JS)
+
+        return format(abs(hash_val), "x")  # Convert to hex string like in JS
 
     async def cleanup_old_artwork(self) -> None:
         """Remove old artwork files from publish directory."""
@@ -415,7 +483,7 @@ class ArtworkManager:
 
 
 class PlaylistManager:
-    """Manages playlist.json updates and current track debugrmation."""
+    """Manages playlist.json updates and current track information."""
 
     def __init__(
         self, playlist_json: Path, playlist_txt: Path, artwork_publish_path: Path
@@ -430,20 +498,25 @@ class PlaylistManager:
         self.playlist_json.parent.mkdir(parents=True, exist_ok=True)
         self.playlist_txt.parent.mkdir(parents=True, exist_ok=True)
 
-    async def update_track(self, track: TrackInfo) -> None:
+    async def update_track(
+        self, track: TrackInfo, artwork_hash: Optional[str] = None
+    ) -> None:
         """Update current track and playlist file.
 
         Args:
             track: TrackInfo object containing new track information
+            artwork_hash: Optional hash for the artwork
         """
         try:
             self.current_track = track
-            await self.update_playlist_json(track)
+            await self.update_playlist_json(track, artwork_hash)
             await self.update_playlist_txt(track)
         except Exception as e:
             logging.error(f"💥 Error updating track: {e}")
 
-    async def update_playlist_json(self, track: TrackInfo) -> None:
+    async def update_playlist_json(
+        self, track: TrackInfo, artwork_hash: Optional[str] = None
+    ) -> None:
         """Update the JSON playlist file with current track information."""
         try:
             playlist_data = {
@@ -454,6 +527,10 @@ class PlaylistManager:
                 "program_title": track.program,
                 "presenter": track.presenter,
             }
+
+            # Add image_hash if provided
+            if artwork_hash:
+                playlist_data["image_hash"] = artwork_hash
 
             # Write JSON file with proper indentation for readability
             with open(self.playlist_json, "w") as f:
@@ -520,6 +597,17 @@ class Myrcat:
 
         logging.info(f"😺 Starting up!")
 
+        # Add default section for artwork hash if it doesn't exist
+        if not self.config.has_section("artwork_hash"):
+            self.config.add_section("artwork_hash")
+            self.config.set("artwork_hash", "enabled", "true")
+            self.config.set(
+                "artwork_hash",
+                "directory",
+                str(Path(self.config["artwork"]["publish_directory"]).parent / "ca"),
+            )
+            logging.info("🆕 Added default artwork hash configuration")
+
         # Load skip lists from files
         skip_artists_file = Path(self.config["publish_exceptions"]["skip_artists_file"])
         skip_titles_file = Path(self.config["publish_exceptions"]["skip_titles_file"])
@@ -533,6 +621,17 @@ class Myrcat:
         self.playlist_json = Path(self.config["web"]["playlist_json"])
         self.playlist_txt = Path(self.config["web"]["playlist_txt"])
 
+        # Add the hashed artwork directory path
+        self.artwork_hash_enabled = self.config.getboolean(
+            "artwork_hash", "enabled", fallback=True
+        )
+        self.artwork_hash_dir = Path(self.config["artwork_hash"]["directory"])
+
+        if self.artwork_hash_enabled:
+            logging.info(
+                f"🎨 Artwork hashing enabled - directory: {self.artwork_hash_dir}"
+            )
+
         if self.skip_artists:
             logging.warning(f"⚠️ : Artists are being skipped")
         if self.skip_titles:
@@ -543,7 +642,11 @@ class Myrcat:
         self.playlist = PlaylistManager(
             self.playlist_json, self.playlist_txt, self.artwork_publish
         )
-        self.artwork = ArtworkManager(self.artwork_incoming, self.artwork_publish)
+        self.artwork = ArtworkManager(
+            self.artwork_incoming,
+            self.artwork_publish,
+            self.artwork_hash_dir if self.artwork_hash_enabled else None,
+        )
         self.social = SocialMediaManager(self.config)
 
     def load_skip_list(self, file_path: Path) -> list:
@@ -565,6 +668,8 @@ class Myrcat:
     def should_skip_track(self, title: str, artist: str) -> bool:
         """Check if track should be skipped based on artist or title."""
         return any([title in self.skip_titles, artist in self.skip_artists])
+
+    # Replace the process_new_track method in the Myrcat class
 
     async def process_new_track(self, track_json: Dict[str, Any]):
         """We come here after validating the JSON data."""
@@ -617,12 +722,26 @@ class Myrcat:
                 await asyncio.sleep(delay_seconds)
 
             # Process artwork file on web server
+            new_filename = None
+            artwork_hash = None
+
             if track.image:
                 new_filename = await self.artwork.process_artwork(track.image)
                 track.image = new_filename  # Update track object with the new filename
 
-            # Update playlist file on web server
-            await self.playlist.update_track(track)
+                # Generate hash for the artwork if enabled
+                if self.artwork_hash_enabled and track.artist and track.title:
+                    artwork_hash = await self.artwork.create_hashed_artwork(
+                        new_filename, track.artist, track.title
+                    )
+                    logging.debug(f"🔑 Generated artwork hash: {artwork_hash}")
+            # Always generate a hash even if there's no image
+            elif self.artwork_hash_enabled and track.artist and track.title:
+                artwork_hash = self.generate_hash(track.artist, track.title)
+                logging.debug(f"🔑 Generated artwork hash (no image): {artwork_hash}")
+
+            # Update playlist file on web server with the artwork hash
+            await self.playlist.update_track(track, artwork_hash)
 
             # Update social media but check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
