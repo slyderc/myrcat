@@ -21,7 +21,8 @@ import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+from collections import deque
 
 # Social media modules
 import pylast
@@ -482,6 +483,108 @@ class ArtworkManager:
             logging.error(f"💥 Error during artwork cleanup: {e}")
 
 
+class HistoryManager:
+    """Manages track history and history.json file."""
+    
+    def __init__(self, history_json_path: Path, max_tracks: int = 30):
+        """Initialize the history manager.
+        
+        Args:
+            history_json_path: Path to the history.json file
+            max_tracks: Maximum number of tracks to keep in history
+        """
+        self.history_json_path = history_json_path
+        self.max_tracks = max_tracks
+        self.track_history = deque(maxlen=max_tracks)
+        
+        # Ensure parent directory exists
+        self.history_json_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Load existing history if available
+        self.load_history()
+        
+    def load_history(self):
+        """Load track history from existing history.json file."""
+        try:
+            if self.history_json_path.exists():
+                with open(self.history_json_path, 'r') as f:
+                    history_data = json.load(f)
+                    
+                if isinstance(history_data, list):
+                    # Only keep up to max_tracks
+                    self.track_history = deque(history_data[:self.max_tracks], maxlen=self.max_tracks)
+                    logging.debug(f"📋 Loaded {len(self.track_history)} tracks from history.json")
+                else:
+                    logging.warning("⚠️ history.json exists but is not a list, creating new history")
+        except Exception as e:
+            logging.error(f"💥 Error loading history.json: {e}")
+    
+    async def add_track(self, track: TrackInfo, artwork_hash: Optional[str] = None) -> None:
+        """Add a track to the history and update the history.json file.
+        
+        Args:
+            track: TrackInfo object containing track information
+            artwork_hash: Optional hash for the artwork
+        """
+        try:
+            # Create track entry in the format needed for history.json
+            track_entry = {
+                "title": track.title,
+                "artist": track.artist,
+                "album": track.album,
+                "artwork_url": f"/player/publish/{track.image}" if track.image else None,
+                "played_at": datetime.now(timezone.utc).isoformat(),
+            }
+            
+            # Add image_hash if provided - this will be used by the embeds
+            if artwork_hash:
+                track_entry["image_hash"] = artwork_hash
+                # Add the hashed artwork URL path that points to the ca directory
+                track_entry["hashed_artwork_url"] = f"/player/ca/{artwork_hash}.jpg"
+            
+            # Check if this is the same as the most recent track (avoid duplicates)
+            if (self.track_history and 
+                self.track_history[0].get("title") == track_entry["title"] and 
+                self.track_history[0].get("artist") == track_entry["artist"]):
+                # Update timestamp and any other changed fields
+                self.track_history[0].update(track_entry)
+                logging.debug("📋 Updated existing track in history (same track played again)")
+            else:
+                # Add to the front of the history
+                self.track_history.appendleft(track_entry)
+                logging.debug("📋 Added new track to history")
+            
+            # Write updated history to file
+            await self.save_history()
+            
+        except Exception as e:
+            logging.error(f"💥 Error adding track to history: {e}")
+    
+    async def save_history(self) -> None:
+        """Write track history to history.json file."""
+        try:
+            with open(self.history_json_path, 'w') as f:
+                # Convert deque to list for JSON serialization
+                json.dump(list(self.track_history), f, indent=2)
+            
+            logging.debug(f"📋 Saved {len(self.track_history)} tracks to history.json")
+        except Exception as e:
+            logging.error(f"💥 Error saving history.json: {e}")
+    
+    def get_history(self, limit: Optional[int] = None) -> list:
+        """Get track history, optionally limited to a number of tracks.
+        
+        Args:
+            limit: Optional limit of tracks to return
+            
+        Returns:
+            List of track history entries
+        """
+        if limit and limit > 0:
+            return list(self.track_history)[:limit]
+        return list(self.track_history)
+
+
 class PlaylistManager:
     """Manages playlist.json updates and current track information."""
 
@@ -620,6 +723,8 @@ class Myrcat:
         self.artwork_publish = Path(self.config["artwork"]["publish_directory"])
         self.playlist_json = Path(self.config["web"]["playlist_json"])
         self.playlist_txt = Path(self.config["web"]["playlist_txt"])
+        self.history_json = Path(self.config["web"]["history_json"])
+        self.history_max_tracks = self.config.getint("web", "history_max_tracks", fallback=30)
 
         # Add the hashed artwork directory path
         self.artwork_hash_enabled = self.config.getboolean(
@@ -642,12 +747,17 @@ class Myrcat:
         self.playlist = PlaylistManager(
             self.playlist_json, self.playlist_txt, self.artwork_publish
         )
+        self.history = HistoryManager(
+            self.history_json, self.history_max_tracks
+        )
         self.artwork = ArtworkManager(
             self.artwork_incoming,
             self.artwork_publish,
             self.artwork_hash_dir if self.artwork_hash_enabled else None,
         )
         self.social = SocialMediaManager(self.config)
+        
+        logging.info(f"📋 Track history enabled - max tracks: {self.history_max_tracks}")
 
     def load_skip_list(self, file_path: Path) -> list:
         """Load skip list from file, ignoring comments and empty lines."""
@@ -737,11 +847,15 @@ class Myrcat:
                     logging.debug(f"🔑 Generated artwork hash: {artwork_hash}")
             # Always generate a hash even if there's no image
             elif self.artwork_hash_enabled and track.artist and track.title:
-                artwork_hash = self.generate_hash(track.artist, track.title)
+                artwork_hash = self.artwork.generate_hash(track.artist, track.title)
                 logging.debug(f"🔑 Generated artwork hash (no image): {artwork_hash}")
 
             # Update playlist file on web server with the artwork hash
             await self.playlist.update_track(track, artwork_hash)
+            
+            # Update track history
+            await self.history.add_track(track, artwork_hash)
+            logging.debug(f"📋 Updated track history with {track.artist} - {track.title}")
 
             # Update social media but check if track should be skipped
             if self.should_skip_track(track.title, track.artist):
