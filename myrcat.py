@@ -540,7 +540,7 @@ class HistoryManager:
             if artwork_hash:
                 track_entry["image_hash"] = artwork_hash
                 # Add the hashed artwork URL path that points to the ca directory
-                track_entry["hashed_artwork_url"] = f"/player/ca/{artwork_hash}.jpg"
+                track_entry["hashed_artwork_url"] = f"/player/publish/ca/{artwork_hash}.jpg"
             
             # Check if this is the same as the most recent track (avoid duplicates)
             if (self.track_history and 
