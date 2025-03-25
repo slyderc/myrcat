@@ -9,8 +9,8 @@ After the post, create 3 hashtags appropriate for Bluesky based on the content. 
 #BerlinElectronic #DarkWave #SundayVibes
 
 IMPORTANT RESTRICTIONS:
-- MUST be under 225 characters total (this is critical)
-- NEVER include the hashtag "#NowWaveRadio"
+- MUST be under 215 characters total (this is critical)
+- ALWAYS include the first hashtag "#NowWaveRadio"
 - Do not start the post with "That moment when"
 - Feel conversational and include 1 or 2 emojis only
 - Never place two emojis next to each other like: 🎤🔈
