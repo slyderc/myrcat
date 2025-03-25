@@ -41,11 +41,6 @@ class ContentGenerationError(MyrcatException):
     pass
 
 
-class ImageGenerationError(MyrcatException):
-    """Raised for custom image generation errors."""
-    pass
-
-
 class AnalyticsError(MyrcatException):
     """Raised for social media analytics errors."""
     pass

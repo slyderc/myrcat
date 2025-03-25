@@ -3,9 +3,7 @@
 import logging
 import configparser
 import time
-import uuid
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 from typing import Dict, Callable, Coroutine, Any, Optional
 
 import pylast
@@ -16,7 +14,6 @@ from facebook import GraphAPI
 from myrcat.models import TrackInfo
 from myrcat.exceptions import SocialMediaError
 from myrcat.managers.content import ContentGenerator
-from myrcat.managers.image import ImageGenerator
 from myrcat.managers.analytics import SocialMediaAnalytics
 from myrcat.managers.artwork import ArtworkManager
 from myrcat.managers.database import DatabaseManager
@@ -66,9 +63,6 @@ class SocialMediaManager:
 
         # Initialize new components
         self.content_generator = ContentGenerator(config)
-        
-        # Initialize image generator
-        self.image_generator = ImageGenerator(config)
         
         # Initialize analytics
         self.analytics = SocialMediaAnalytics(config, db_manager)
@@ -253,29 +247,15 @@ class SocialMediaManager:
             
             # Create embed with image if available
             embed = None
-            temp_image_path = None
             
             if self.bluesky_enable_images:
-                # Try to use existing artwork
+                # Use existing artwork only
                 image_path = None
                 if track.image:
                     # Get full path to processed artwork
                     artwork_path = self.artwork_manager.publish_dir / track.image
                     if artwork_path.exists():
                         image_path = artwork_path
-                
-                # Generate custom image if artwork is not available
-                if not image_path:
-                    # Create temp directory for generated images if it doesn't exist
-                    temp_dir = Path("temp")
-                    temp_dir.mkdir(exist_ok=True)
-                    
-                    # Generate a unique filename for the image
-                    temp_image_name = f"{uuid.uuid4()}.jpg"
-                    temp_image_path = temp_dir / temp_image_name
-                    
-                    # Generate the image
-                    image_path = await self.image_generator.generate_track_image(track, temp_image_path)
                 
                 # Upload image to Bluesky if available
                 if image_path and image_path.exists():
@@ -355,13 +335,6 @@ class SocialMediaManager:
                     "embed": embed
                 }
             })
-            
-            # Clean up temporary image if one was created
-            if temp_image_path and temp_image_path.exists():
-                try:
-                    temp_image_path.unlink()
-                except Exception as e:
-                    logging.warning(f"⚠️ Could not delete temporary image: {e}")
             
             # Track post in analytics
             if hasattr(self, "analytics") and hasattr(response, "uri"):

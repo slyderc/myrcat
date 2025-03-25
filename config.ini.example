@@ -39,14 +39,10 @@ page_id =
 [bluesky]
 handle =
 app_password =
-# Enable image attachments for Bluesky posts
+# Enable existing artwork attachments for Bluesky posts
 enable_images = true
 # Enable AI-enhanced post content for Bluesky
 enable_ai_content = true
-# Templates directory for custom image generation
-templates_directory = templates/social
-# Fonts directory for custom image generation
-fonts_directory = templates/fonts
 # Post frequency limit (hours between posts)
 post_frequency = 1
 # TESTING ONLY: Set to true to bypass frequency limits and post every track
