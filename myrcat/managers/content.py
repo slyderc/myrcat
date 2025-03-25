@@ -250,15 +250,21 @@ class ContentGenerator:
             logging.error(f"💥 Claude API call failed: {e}")
             return None
 
-    def generate_hashtags(self, track: TrackInfo) -> str:
+    def generate_hashtags(self, track: TrackInfo, is_ai_content: bool = False) -> str:
         """Generate relevant hashtags for the track.
 
         Args:
             track: TrackInfo object containing track information
+            is_ai_content: Whether the post is AI-generated
 
         Returns:
-            String containing hashtags
+            String containing hashtags or empty string if AI-generated content
         """
+        # If this is AI-generated content, return an empty string (no hashtags)
+        if is_ai_content:
+            return ""
+            
+        # Otherwise, generate hashtags for non-AI content
         hashtags = ["#NowWaveRadio"]
 
         # Add program hashtag if available
@@ -268,7 +274,7 @@ class ContentGenerator:
             )
             hashtags.append(program_hashtag)
             
-        # Add artist/band hashtag if available
+        # Add artist/band hashtag
         if track.artist:
             # Clean up artist name for hashtag
             # Split by common separators and take the first part (main artist)

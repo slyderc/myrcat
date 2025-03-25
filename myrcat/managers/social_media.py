@@ -342,8 +342,9 @@ class SocialMediaManager:
                     except Exception as img_err:
                         logging.error(f"💥 Error uploading image to Bluesky: {img_err}")
             
-            # Generate system hashtags
-            sys_hashtags = self.content_generator.generate_hashtags(track)
+            # Generate system hashtags - pass content source info
+            is_ai_content = (content_source == "ai")
+            sys_hashtags = self.content_generator.generate_hashtags(track, is_ai_content=is_ai_content)
             
             # Add show name as final hashtag if it exists and isn't already included
             if track.program and track.program.strip():
@@ -353,18 +354,59 @@ class SocialMediaManager:
                 if show_hashtag not in sys_hashtags:
                     sys_hashtags = sys_hashtags + " " + show_hashtag
             
-            # Check if post already has hashtags from AI generation
-            if "\n\n#" in post_text:
-                # Split post into content and AI hashtags
-                main_content, ai_hashtags = post_text.split("\n\n#", 1)
-                # Combine AI hashtags with system hashtags
-                combined_hashtags = "#" + ai_hashtags.strip() + " " + sys_hashtags
-                # Rebuild the post
-                post_text = main_content.strip() + f"\n\n{combined_hashtags}"
+            # Helper function to remove duplicate hashtags while preserving order
+            def deduplicate_hashtags(hashtag_str: str) -> str:
+                if not hashtag_str.strip():
+                    return ""
+                    
+                # Split by spaces, keeping only unique hashtags (preserving order)
+                seen = set()
+                unique_hashtags = []
+                
+                for tag in hashtag_str.split():
+                    # Skip empty tags
+                    if not tag.strip():
+                        continue
+                        
+                    # Normalize the tag to lowercase for comparison
+                    tag_lower = tag.lower()
+                    
+                    # Only add if we haven't seen this tag before
+                    if tag_lower not in seen:
+                        seen.add(tag_lower)
+                        unique_hashtags.append(tag)
+                
+                # Return space-separated hashtags
+                return " ".join(unique_hashtags)
+
+            # For AI content, leave any hashtags that the AI generated (after deduplication)
+            # For non-AI content, add our system-generated hashtags (after deduplication)
+            if is_ai_content:
+                # If AI content has "\n\n#" pattern, deduplicate the hashtags
+                if "\n\n#" in post_text:
+                    main_content, ai_hashtags = post_text.split("\n\n#", 1)
+                    deduplicated_hashtags = deduplicate_hashtags("#" + ai_hashtags.strip())
+                    if deduplicated_hashtags:
+                        post_text = main_content.strip() + f"\n\n{deduplicated_hashtags}"
+                    else:
+                        post_text = main_content.strip()
+                else:
+                    # Ensure the post text is properly trimmed
+                    post_text = post_text.strip()
             else:
-                # No AI hashtags, just add system hashtags
-                post_text = post_text.strip()
-                post_text += f"\n\n{sys_hashtags}"
+                # Not AI-generated content - add system hashtags
+                if "\n\n#" in post_text:
+                    # Split post into content and existing hashtags 
+                    main_content, existing_hashtags = post_text.split("\n\n#", 1)
+                    # Combine existing hashtags with system hashtags and deduplicate
+                    combined_hashtags = deduplicate_hashtags("#" + existing_hashtags.strip() + " " + sys_hashtags)
+                    # Rebuild the post
+                    post_text = main_content.strip() + f"\n\n{combined_hashtags}"
+                else:
+                    # No existing hashtags, add system hashtags if we have any (already deduplicated)
+                    post_text = post_text.strip()
+                    if sys_hashtags:
+                        post_text += f"\n\n{sys_hashtags}"
                 
             # Check post length for Bluesky's 300 character limit
             if len(post_text) > 300:
