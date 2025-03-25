@@ -5,6 +5,7 @@ import random
 import asyncio
 import aiohttp
 import time
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Any
@@ -266,6 +267,25 @@ class ContentGenerator:
                 word.capitalize() for word in track.program.split()
             )
             hashtags.append(program_hashtag)
+            
+        # Add artist/band hashtag if available
+        if track.artist:
+            # Clean up artist name for hashtag
+            # Split by common separators and take the first part (main artist)
+            main_artist = track.artist.split(" feat.")[0].split(" ft.")[0].split(" &")[0].split(" and ")[0]
+            
+            # Create a clean hashtag (alphanumeric only, no spaces)
+            clean_artist = "".join(
+                word.capitalize() for word in main_artist.split() if word
+            )
+            
+            # Remove any non-alphanumeric characters except underscores
+            clean_artist = re.sub(r'[^\w]', '', clean_artist)
+            
+            # Only add if we have something meaningful
+            if clean_artist:
+                artist_hashtag = f"#{clean_artist}"
+                hashtags.append(artist_hashtag)
 
         # Add new music hashtag for recent releases
         current_year = datetime.now().year
