@@ -46,10 +46,6 @@ class ContentGenerator:
         )
         self.prompt_manager = PromptManager(prompts_dir)
 
-        # For tracking when to reload prompts
-        self.last_prompt_reload_time = time.time()
-        self.prompt_reload_interval = 60  # Check for prompt changes every 60 seconds
-
         if self.testing_mode:
             logging.warning(
                 f"🧪 TESTING MODE ENABLED: AI content generation will be used for ALL posts (100%)"
@@ -62,13 +58,6 @@ class ContentGenerator:
         # Load templates for non-AI posts
         self.templates = self._load_templates()
 
-    def _check_prompt_reload(self):
-        """Check if we should reload all prompt files based on time interval."""
-        current_time = time.time()
-        if current_time - self.last_prompt_reload_time > self.prompt_reload_interval:
-            logging.debug(f"🔄 Checking for prompt file changes (periodic check)")
-            self.prompt_manager.reload_all_prompts()
-            self.last_prompt_reload_time = current_time
 
     def _load_templates(self):
         """Load post templates."""
@@ -178,9 +167,6 @@ class ContentGenerator:
         metadata = {"prompt_name": prompt_name}
         
         try:
-            # Check if we should reload all prompts (periodically)
-            self._check_prompt_reload()
-
             # Create track info dictionary for prompt template
             track_dict = {
                 "title": track.title,

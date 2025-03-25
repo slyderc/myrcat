@@ -281,6 +281,27 @@ class Myrcat:
         except Exception as e:
             logging.error(f"💥 Unexpected error in engagement check task: {e}")
             
+    async def check_config_task(self):
+        """Periodic task to check for configuration file changes."""
+        try:
+            # Check every 60 seconds
+            check_seconds = 60
+            
+            while True:
+                # Wait for the interval
+                await asyncio.sleep(check_seconds)
+                
+                # Check for config changes
+                try:
+                    if self.config.reload_if_changed():
+                        logging.info(f"✅ Configuration reloaded successfully")
+                except Exception as e:
+                    logging.error(f"💥 Error checking for config changes: {e}")
+        except asyncio.CancelledError:
+            logging.debug("⚙️ Config check task cancelled")
+        except Exception as e:
+            logging.error(f"💥 Unexpected error in config check task: {e}")
+            
     async def run(self):
         """Start the server and run the application."""
         try:
@@ -291,6 +312,10 @@ class Myrcat:
                 # Start as a background task
                 engagement_task = asyncio.create_task(self.check_engagement_task())
                 logging.info(f"📊 Social media analytics task started")
+            
+            # Start config check task
+            config_check_task = asyncio.create_task(self.check_config_task())
+            logging.info(f"⚙️ Configuration monitoring task started")
             
             # Start the server
             await self.server.start()
@@ -304,6 +329,14 @@ class Myrcat:
                 engagement_task.cancel()
                 try:
                     await engagement_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Cancel config check task
+            if 'config_check_task' in locals():
+                config_check_task.cancel()
+                try:
+                    await config_check_task
                 except asyncio.CancelledError:
                     pass
                     

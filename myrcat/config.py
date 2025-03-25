@@ -21,17 +21,24 @@ class Config:
             ConfigurationError: If the configuration file is not found or invalid
         """
         self.config_parser = configparser.ConfigParser()
+        self.config_path = Path(config_path)
         
-        config_file = Path(config_path)
-        if not config_file.exists():
+        if not self.config_path.exists():
             raise ConfigurationError(f"Config file not found: {config_path}")
             
+        # Store the file modification time
+        self.last_modified_time = self.config_path.stat().st_mtime
+        
         try:
-            self.config_parser.read(config_path)
-            self._validate_config()
-            self._setup_defaults()
+            self._load_config()
         except Exception as e:
             raise ConfigurationError(f"Error loading configuration: {e}")
+    
+    def _load_config(self) -> None:
+        """Load the configuration file and apply validations and defaults."""
+        self.config_parser.read(self.config_path)
+        self._validate_config()
+        self._setup_defaults()
     
     def _validate_config(self) -> None:
         """Validate the configuration file has necessary sections and options."""
@@ -135,3 +142,78 @@ class Config:
             ConfigParser object
         """
         return self.config_parser
+        
+    def check_for_changes(self) -> bool:
+        """Check if the config file has been modified since last read.
+        
+        Returns:
+            True if the file has been modified, False otherwise
+        """
+        if not self.config_path.exists():
+            logging.warning(f"⚠️ Config file no longer exists: {self.config_path}")
+            return False
+            
+        try:
+            # Force stat refresh to get current mtime
+            current_mtime = self.config_path.stat().st_mtime
+            
+            if current_mtime > self.last_modified_time:
+                logging.info(f"🔄 Config file has been modified: {self.config_path}")
+                return True
+                
+            return False
+        except Exception as e:
+            logging.error(f"💥 Error checking config file modification: {e}")
+            return False
+            
+    def reload_if_changed(self) -> bool:
+        """Reload the configuration file if it has been modified.
+        
+        Returns:
+            True if the config was reloaded, False otherwise
+        """
+        if not self.check_for_changes():
+            return False
+            
+        try:
+            # Save old config for comparison
+            old_config = dict([(section, dict(self.config_parser[section])) 
+                              for section in self.config_parser.sections()])
+            
+            # Reload the config
+            self._load_config()
+            
+            # Update the modification time
+            self.last_modified_time = self.config_path.stat().st_mtime
+            
+            # Log which sections were modified
+            self._log_config_changes(old_config)
+            
+            return True
+        except Exception as e:
+            logging.error(f"💥 Error reloading config file: {e}")
+            return False
+            
+    def _log_config_changes(self, old_config: Dict[str, Dict[str, str]]) -> None:
+        """Log which sections and options were changed in the config.
+        
+        Args:
+            old_config: Dictionary of old configuration values
+        """
+        # Check for new or modified sections
+        for section in self.config_parser.sections():
+            if section not in old_config:
+                logging.info(f"🆕 New config section added: [{section}]")
+                continue
+                
+            # Check for new or modified options in this section
+            for option, value in self.config_parser[section].items():
+                if option not in old_config[section]:
+                    logging.info(f"🆕 New config option added: [{section}] {option}")
+                elif old_config[section][option] != value:
+                    logging.info(f"🔄 Config option changed: [{section}] {option}")
+                    
+        # Check for removed sections
+        for section in old_config:
+            if not self.config_parser.has_section(section):
+                logging.info(f"🗑️ Config section removed: [{section}]")

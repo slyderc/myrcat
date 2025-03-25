@@ -81,36 +81,6 @@ IMPORTANT RESTRICTIONS:
         except Exception as e:
             logging.error(f"💥 Error loading prompt templates: {e}")
             
-    def reload_all_prompts(self) -> None:
-        """Force reload all prompt templates from the prompts directory."""
-        logging.info(f"🔄 Force reloading all prompt templates")
-        
-        # First, discover all prompt files in the directory
-        prompt_files = list(self.prompts_dir.glob("*.txt"))
-        file_names = {file_path.stem for file_path in prompt_files}
-        
-        # Keep track of which prompts were successfully reloaded
-        reloaded_prompts = set()
-        
-        # Reload all files found in the directory
-        for name in file_names:
-            try:
-                # Force a reload by setting check_modified=True
-                self.load_prompt(name)
-                reloaded_prompts.add(name)
-            except Exception as e:
-                logging.error(f"💥 Error reloading prompt {name}: {e}")
-                
-        # Check for prompts that are in memory but no longer exist as files
-        removed_count = 0
-        for name in list(self.prompts.keys()):
-            if name not in file_names:
-                del self.prompts[name]
-                if name in self.file_mtimes:
-                    del self.file_mtimes[name]
-                removed_count += 1
-                
-        logging.info(f"🔄 Reloaded {len(reloaded_prompts)} prompt templates, removed {removed_count} missing prompts")
 
     def load_prompt(self, name: str) -> bool:
         """Load a specific prompt template.
@@ -143,21 +113,20 @@ IMPORTANT RESTRICTIONS:
             return False
 
     def get_prompt(
-        self, name: str = "default", check_modified: bool = True
+        self, name: str = "default"
     ) -> Optional[str]:
-        """Get a prompt template by name, checking for modifications if requested.
+        """Get a prompt template by name, always checking for modifications.
 
         Args:
             name: Name of the prompt template
-            check_modified: Whether to check if the file has been modified
 
         Returns:
             Prompt template content or None if not found
         """
         file_path = self.prompts_dir / f"{name}.txt"
         
-        # Check if we need to reload the prompt
-        if check_modified and name in self.prompts:
+        # Always check if the file has been modified if it's already loaded
+        if name in self.prompts:
             reloaded = self._check_and_reload_if_modified(name)
             if reloaded:
                 logging.debug(f"📝 Reloaded modified prompt: {name}.txt")
