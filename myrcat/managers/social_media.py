@@ -115,10 +115,14 @@ class SocialMediaManager:
         self.bluesky_post_frequency = self.config.getint("bluesky", "post_frequency", fallback=1)
         self.bluesky_testing_mode = self.config.getboolean("bluesky", "testing_mode", fallback=False)
         
+        # Get image dimensions from config with fallbacks to 600x600
+        self.bluesky_image_width = self.config.getint("bluesky", "image_width", fallback=600)
+        self.bluesky_image_height = self.config.getint("bluesky", "image_height", fallback=600)
+        
         if self.bluesky_testing_mode:
             logging.warning(f"🧪 TESTING MODE ENABLED: Bluesky frequency limits disabled - every track will be posted")
         
-        logging.debug(f"Bluesky initialized for: {self.bluesky_handle} (images: {'enabled' if self.bluesky_enable_images else 'disabled'}, AI: {'enabled' if self.bluesky_enable_ai else 'disabled'})")
+        logging.debug(f"Bluesky initialized for: {self.bluesky_handle} (images: {'enabled' if self.bluesky_enable_images else 'disabled'}, AI: {'enabled' if self.bluesky_enable_ai else 'disabled'}, image size: {self.bluesky_image_width}x{self.bluesky_image_height})")
 
     def setup_facebook(self):
         """Initialize Facebook Graph API client."""
@@ -326,17 +330,38 @@ class SocialMediaManager:
                 # Upload image to Bluesky if available
                 if image_path and image_path.exists():
                     try:
+                        # Resize image for social media using configured dimensions
+                        temp_resized, dimensions = await self.artwork_manager.resize_for_social(
+                            image_path, 
+                            size=(self.bluesky_image_width, self.bluesky_image_height)
+                        )
+                        upload_path = temp_resized if temp_resized else image_path
+                        img_width, img_height = dimensions
+                        
                         # Upload the image to Bluesky
-                        with open(image_path, 'rb') as f:
+                        with open(upload_path, 'rb') as f:
                             image_data = f.read()
                         blob = client.com.atproto.repo.upload_blob(image_data)
                         
-                        # Create image embed
+                        # Clean up temp file if it exists
+                        if temp_resized and temp_resized.exists():
+                            try:
+                                temp_resized.unlink()
+                                logging.debug(f"🧹 Removed temporary resized image: {temp_resized}")
+                            except Exception as clean_err:
+                                logging.warning(f"⚠️ Failed to remove temporary image: {clean_err}")
+                        
+                        # Create image embed with width and height dimensions
+                        # We're using 600x600 as our standard size for consistency
                         embed = {
                             "$type": "app.bsky.embed.images",
                             "images": [{
                                 "alt": f"Album artwork for {track.title} by {track.artist}",
-                                "image": blob.blob
+                                "image": blob.blob,
+                                "aspectRatio": {
+                                    "width": img_width,
+                                    "height": img_height
+                                }
                             }]
                         }
                     except Exception as img_err:
@@ -474,7 +499,12 @@ class SocialMediaManager:
                 source_log = f"template content (template: {source_details})"
                 
             # Log at INFO level for operational monitoring
-            logging.info(f"🔵 Bluesky post created for {track.artist} - {track.title} using {source_log} with {'image' if embed else 'no image'}")
+            if embed:
+                image_info = f"image ({img_width}x{img_height})"
+            else:
+                image_info = "no image"
+                
+            logging.info(f"🔵 Bluesky post created for {track.artist} - {track.title} using {source_log} with {image_info}")
             
             logging.debug(f"📒 Updated Bluesky with {'AI' if self.bluesky_enable_ai else 'standard'} content and {'image' if embed else 'no image'}")
             return True

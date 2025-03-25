@@ -3,3 +3,4 @@ atproto>=0.0.6
 facebook-sdk
 pylast
 aiohttp>=3.8.0
+pillow>=9.0.0

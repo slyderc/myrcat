@@ -45,6 +45,10 @@ enable_images = true
 enable_ai_content = true
 # Post frequency limit (hours between posts)
 post_frequency = 1
+# Image width for Bluesky posts (pixels)
+image_width = 600
+# Image height for Bluesky posts (pixels)
+image_height = 600
 # TESTING ONLY: Set to true to bypass frequency limits and post every track
 testing_mode = false
 

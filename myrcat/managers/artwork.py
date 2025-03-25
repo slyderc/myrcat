@@ -4,8 +4,17 @@ import logging
 import shutil
 import uuid
 import asyncio
+import tempfile
 from pathlib import Path
 from typing import Optional
+
+# Import Pillow conditionally to handle environments without it
+try:
+    from PIL import Image
+    PILLOW_AVAILABLE = True
+except ImportError:
+    PILLOW_AVAILABLE = False
+    logging.warning("⚠️ Pillow not available. Image resizing for social media disabled.")
 
 from myrcat.exceptions import ArtworkError
 
@@ -171,3 +180,72 @@ class ArtworkManager:
                     logging.error(f"Error removing old artwork {file.name}: {e}")
         except Exception as e:
             logging.error(f"💥 Error during artwork cleanup: {e}")
+            
+    async def resize_for_social(self, image_path: Path, size: tuple = (600, 600)) -> tuple[Optional[Path], tuple]:
+        """Resize image to specified dimensions while maintaining aspect ratio.
+        
+        Creates a square image with the specified dimensions, centering the original image
+        and filling any empty space with white. Ideal for social media posts where
+        consistent image sizes are preferred.
+        
+        Args:
+            image_path: Path to the original image
+            size: Desired output size (width, height)
+            
+        Returns:
+            Tuple of (Path to resized image or None if resizing failed, actual dimensions (width, height))
+        """
+        if not PILLOW_AVAILABLE:
+            logging.warning("⚠️ Cannot resize image: Pillow library not available")
+            return None, (0, 0)
+        
+        if not image_path.exists():
+            logging.error(f"💥 Cannot resize image: File not found: {image_path}")
+            return None, (0, 0)
+            
+        try:
+            # Create a temp file with the same extension as the original
+            suffix = image_path.suffix
+            temp_fd, temp_path_str = tempfile.mkstemp(suffix=suffix)
+            temp_path = Path(temp_path_str)
+            
+            # Open and resize image
+            with Image.open(image_path) as img:
+                # Convert to RGB if has transparency (RGBA)
+                if img.mode == 'RGBA':
+                    img = img.convert('RGB')
+                    
+                # Create a copy of the image to avoid modifying the original
+                img_copy = img.copy()
+                
+                # Calculate the resize dimensions while preserving aspect ratio
+                img_width, img_height = img_copy.size
+                ratio = min(size[0] / img_width, size[1] / img_height)
+                new_width = int(img_width * ratio)
+                new_height = int(img_height * ratio)
+                
+                # Resize the image (preserving aspect ratio)
+                img_resized = img_copy.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # Create a new blank square image with the target size (white background)
+                new_img = Image.new("RGB", size, (255, 255, 255))
+                
+                # Paste the resized image centered on the white canvas
+                paste_x = (size[0] - new_width) // 2
+                paste_y = (size[1] - new_height) // 2
+                new_img.paste(img_resized, (paste_x, paste_y))
+                
+                # Save the result
+                new_img.save(temp_path, format='JPEG', quality=90)
+            
+            logging.debug(f"🖼️ Resized image for social media: {image_path.name} → {size[0]}x{size[1]}")
+            return temp_path, size
+        except Exception as e:
+            logging.error(f"💥 Error resizing image for social media: {e}")
+            # Try to clean up any temp file that might have been created
+            if 'temp_path' in locals() and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except:
+                    pass
+            return None, (0, 0)
