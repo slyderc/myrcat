@@ -3,8 +3,9 @@
 import logging
 import configparser
 import time
+import re
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Callable, Coroutine, Any, Optional
+from typing import Dict, Callable, Coroutine, Any, Optional, List, Tuple
 
 import pylast
 import pylistenbrainz
@@ -139,6 +140,63 @@ class SocialMediaManager:
             hasattr(self, "bluesky_password") and 
             self.bluesky_password
         )
+        
+    def _extract_hashtags_for_bluesky(self, text: str) -> Tuple[str, List[Dict]]:
+        """
+        Extract hashtags from text and create Bluesky facets for them.
+        
+        This properly formats hashtags as rich text facets according to Bluesky's API.
+        Bluesky has specific requirements for hashtags:
+        - Must start with # followed by a non-digit character
+        - Can contain alphanumeric characters, underscores and hyphens
+        - Limited to 64 characters in length
+        - Cannot be numeric-only after the # symbol
+        
+        Args:
+            text: The post text containing hashtags
+            
+        Returns:
+            Tuple of (text without special formatting, list of facet objects for the API)
+        """
+        # Regular expression to find hashtags (similar to Bluesky's regex)
+        # This matches hashtags starting with # and followed by non-digit, non-space characters
+        hashtag_pattern = r'(^|\s)(#[^\d\s]\S*)'
+        facets = []
+        
+        # Find all hashtags in the text
+        for match in re.finditer(hashtag_pattern, text):
+            full_match = match.group(0)  # The entire match including preceding space if any
+            hashtag = match.group(2)     # Just the hashtag itself (#example)
+            
+            # Get byte positions (required by Bluesky API)
+            # We need to convert character positions to byte positions for UTF-8
+            start_pos = match.start(2)  # Character position of hashtag start
+            end_pos = match.end(2)      # Character position of hashtag end
+            
+            # Convert to byte positions
+            start_index = len(text[:start_pos].encode('utf-8'))
+            end_index = len(text[:end_pos].encode('utf-8'))
+            
+            # Remove trailing punctuation from hashtag (following Bluesky's rules)
+            clean_tag = re.sub(r'[.,;:!?]+$', '', hashtag)
+            
+            # Only use tags that aren't too long (Bluesky has a 64-char limit)
+            if len(clean_tag) <= 64:
+                # Create a facet for this hashtag
+                facet = {
+                    "index": {
+                        "byteStart": start_index,
+                        "byteEnd": end_index
+                    },
+                    "features": [{
+                        "$type": "app.bsky.richtext.facet#tag",
+                        "tag": clean_tag[1:]  # Remove the # prefix
+                    }]
+                }
+                facets.append(facet)
+                
+        # Return the original text (Bluesky needs the hashtags in the text) and the facets
+        return text, facets
 
     def _should_post_now(self, platform: str) -> bool:
         """Check if enough time has passed since the last post on this platform.
@@ -237,8 +295,16 @@ class SocialMediaManager:
             client.login(self.bluesky_handle, self.bluesky_password)
             
             # Generate post text based on track info
+            content_source = "standard"
+            source_details = "basic"
+            
             if self.bluesky_enable_ai:
-                post_text = await self.content_generator.generate_track_description(track)
+                post_text, content_metadata = await self.content_generator.generate_track_description(track)
+                content_source = content_metadata.get("source_type", "unknown")
+                if content_source == "ai":
+                    source_details = content_metadata.get("prompt_name", "unknown")
+                else:
+                    source_details = content_metadata.get("template_name", "unknown")
             else:
                 # Use standard text if AI is disabled
                 post_text = f"🎵 Now Playing on Now Wave Radio:\n{track.artist} - {track.title}"
@@ -324,16 +390,33 @@ class SocialMediaManager:
             logging.debug(f"🔵 Bluesky post content ({len(post_text)} chars): {post_text}")
             logging.debug(f"🔵 Bluesky post has image: {'Yes' if embed else 'No'}")
             
-            # Create post with embed
+            # Process the text to extract hashtags and create facets
+            final_text, facets = self._extract_hashtags_for_bluesky(post_text)
+            
+            # Log the facets for debugging
+            if facets:
+                logging.debug(f"🔵 Created {len(facets)} hashtag facets for Bluesky post")
+            
+            # Create record with rich text facets for hashtags
+            post_record = {
+                "$type": "app.bsky.feed.post",
+                "text": final_text,
+                "createdAt": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+            }
+            
+            # Add embed if we have one
+            if embed:
+                post_record["embed"] = embed
+                
+            # Add facets if we found any hashtags
+            if facets:
+                post_record["facets"] = facets
+            
+            # Send the post
             response = client.com.atproto.repo.create_record({
                 "repo": client.me.did,
                 "collection": "app.bsky.feed.post",
-                "record": {
-                    "$type": "app.bsky.feed.post",
-                    "text": post_text,
-                    "createdAt": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-                    "embed": embed
-                }
+                "record": post_record
             })
             
             # Track post in analytics
@@ -341,6 +424,15 @@ class SocialMediaManager:
                 post_id = response.uri.split("/")[-1]
                 await self.analytics.record_post("Bluesky", post_id, track, post_text)
                 logging.debug(f"🔵 Recorded Bluesky post to analytics - ID: {post_id}")
+            
+            # Add detail about content source to log
+            if content_source == "ai":
+                source_log = f"AI content (prompt: {source_details})"
+            else:
+                source_log = f"template content (template: {source_details})"
+                
+            # Log at INFO level for operational monitoring
+            logging.info(f"🔵 Bluesky post created for {track.artist} - {track.title} using {source_log} with {'image' if embed else 'no image'}")
             
             logging.debug(f"📒 Updated Bluesky with {'AI' if self.bluesky_enable_ai else 'standard'} content and {'image' if embed else 'no image'}")
             return True

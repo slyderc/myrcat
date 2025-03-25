@@ -80,18 +80,23 @@ class ContentGenerator:
             "dj_pick": "DJ Pick: {presenter} has selected {artist}'s '{title}' for your listening pleasure on {program}! 🎧",
         }
 
-    async def generate_track_description(self, track: TrackInfo) -> str:
+    async def generate_track_description(self, track: TrackInfo) -> tuple[str, dict]:
         """Generate an engaging description for a track.
 
         Args:
             track: TrackInfo object containing track information
 
         Returns:
-            Generated description as string
+            Tuple of (generated description string, metadata dict with source info)
         """
+        template_name = "unknown"
+        source_type = "template"
+        prompt_name = None
+        
         # First try using built-in templates based on track attributes
         if track.presenter and track.program:
             template = self.templates["dj_pick"]
+            template_name = "dj_pick"
         elif track.year:
             # Handle both string and integer year values
             try:
@@ -100,22 +105,27 @@ class ContentGenerator:
                 )
                 if year_value < 2000:
                     template = self.templates["nostalgic"]
+                    template_name = "nostalgic"
                 else:
-                    template = (
-                        self.templates["with_album"]
-                        if track.album
-                        else self.templates["standard"]
-                    )
+                    if track.album:
+                        template = self.templates["with_album"]
+                        template_name = "with_album"
+                    else:
+                        template = self.templates["standard"]
+                        template_name = "standard"
             except (ValueError, TypeError):
-                template = (
-                    self.templates["with_album"]
-                    if track.album
-                    else self.templates["standard"]
-                )
+                if track.album:
+                    template = self.templates["with_album"]
+                    template_name = "with_album"
+                else:
+                    template = self.templates["standard"]
+                    template_name = "standard"
         elif track.album:
             template = self.templates["with_album"]
+            template_name = "with_album"
         else:
             template = self.templates["standard"]
+            template_name = "standard"
 
         # Fill in the template
         description = template.format(
@@ -127,6 +137,13 @@ class ContentGenerator:
             program=track.program or "",
         )
 
+        # Create metadata for logging
+        metadata = {
+            "source_type": source_type,
+            "template_name": template_name,
+            "prompt_name": None
+        }
+
         # Use AI if testing mode is enabled or random chance is below threshold
         if self.anthropic_api_key and (
             self.testing_mode or random.random() < self.ai_post_ratio
@@ -135,23 +152,31 @@ class ContentGenerator:
                 logging.debug(f"🧪 Using AI for post (testing mode enabled)")
 
             try:
-                enhanced = await self._get_ai_enhanced_description(track)
+                enhanced, prompt_metadata = await self._get_ai_enhanced_description(track)
                 if enhanced:
-                    return enhanced
+                    metadata.update({
+                        "source_type": "ai",
+                        "prompt_name": prompt_metadata.get("prompt_name")
+                    })
+                    return enhanced, metadata
             except Exception as e:
                 logging.error(f"💥 Error generating AI description: {e}")
 
-        return description
+        return description, metadata
 
-    async def _get_ai_enhanced_description(self, track: TrackInfo) -> Optional[str]:
+    async def _get_ai_enhanced_description(self, track: TrackInfo) -> tuple[Optional[str], dict]:
         """Generate an AI-enhanced description using Anthropic's Claude.
 
         Args:
             track: TrackInfo object containing track information
 
         Returns:
-            AI-generated description or None if generation failed
+            Tuple of (AI-generated description or None if generation failed, 
+                     metadata dict with prompt info)
         """
+        prompt_name = "unknown"
+        metadata = {"prompt_name": prompt_name}
+        
         try:
             # Check if we should reload all prompts (periodically)
             self._check_prompt_reload()
@@ -167,12 +192,14 @@ class ContentGenerator:
             }
 
             # Get the appropriate prompt template for this track
-            prompt_template = self.prompt_manager.select_prompt(track_dict)
+            prompt_template, selected_prompt_name = self.prompt_manager.select_prompt(track_dict)
+            prompt_name = selected_prompt_name
+            metadata["prompt_name"] = prompt_name
 
             # Format the prompt with track info
             prompt = self.prompt_manager.format_prompt(prompt_template, track_dict)
 
-            logging.debug(f"🤖 Using AI prompt: {prompt[:100]}...")
+            logging.debug(f"🤖 Using AI prompt '{prompt_name}': {prompt[:100]}...")
 
             # Use Anthropic API
             async with aiohttp.ClientSession() as session:
@@ -183,14 +210,14 @@ class ContentGenerator:
                         if content_block.get("type") == "text":
                             generated_text = content_block.get("text", "").strip()
                             logging.debug(
-                                f"🤖 Generated AI text ({len(generated_text)} chars): {generated_text[:100]}..."
+                                f"🤖 Generated AI text with prompt '{prompt_name}' ({len(generated_text)} chars): {generated_text[:100]}..."
                             )
-                            return generated_text
+                            return generated_text, metadata
 
-                return None
+                return None, metadata
         except Exception as e:
             logging.error(f"💥 Error in AI description generation: {e}")
-            return None
+            return None, metadata
 
     async def _call_claude_api(self, session, prompt):
         """Call the Anthropic Claude API.

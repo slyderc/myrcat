@@ -237,14 +237,14 @@ IMPORTANT RESTRICTIONS:
             logging.error(f"💥 Error details: {type(e).__name__}: {str(e)}")
             return False
 
-    def select_prompt(self, track_info: Dict) -> str:
+    def select_prompt(self, track_info: Dict) -> tuple[str, str]:
         """Select the appropriate prompt based on track info.
 
         Args:
             track_info: Dictionary with track information
 
         Returns:
-            Selected prompt content
+            Tuple of (selected prompt content, prompt name)
         """
         # This is where we can implement logic to select different prompts based on
         # show name, time of day, genre, etc.
@@ -255,7 +255,7 @@ IMPORTANT RESTRICTIONS:
             program_name = track_info["program"].lower().replace(" ", "_")
             show_prompt = self.get_prompt(program_name)
             if show_prompt:
-                return show_prompt
+                return show_prompt, program_name
 
         # Try time-of-day based prompts - check each one before falling back
         current_hour = time.localtime().tm_hour
@@ -267,7 +267,7 @@ IMPORTANT RESTRICTIONS:
             morning_prompt = self.get_prompt(prompt_file)
             if morning_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
-                return morning_prompt
+                return morning_prompt, prompt_file
                 
         # Daytime (10 AM - 3 PM)
         elif 10 <= current_hour < 15:
@@ -276,7 +276,7 @@ IMPORTANT RESTRICTIONS:
             daytime_prompt = self.get_prompt(prompt_file)
             if daytime_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
-                return daytime_prompt
+                return daytime_prompt, prompt_file
                 
         # Afternoon (3 PM - 7 PM)
         elif 15 <= current_hour < 19:
@@ -285,7 +285,7 @@ IMPORTANT RESTRICTIONS:
             afternoon_prompt = self.get_prompt(prompt_file)
             if afternoon_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
-                return afternoon_prompt
+                return afternoon_prompt, prompt_file
                 
         # Evening (7 PM - 11 PM)
         elif 19 <= current_hour < 23:
@@ -294,7 +294,7 @@ IMPORTANT RESTRICTIONS:
             evening_prompt = self.get_prompt(prompt_file)
             if evening_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
-                return evening_prompt
+                return evening_prompt, prompt_file
                 
         # Late Night (11 PM - 5 AM)
         else:
@@ -303,19 +303,19 @@ IMPORTANT RESTRICTIONS:
             late_night_prompt = self.get_prompt(prompt_file)
             if late_night_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
-                return late_night_prompt
+                return late_night_prompt, prompt_file
 
         # Fall back to default prompt
         default_prompt = self.get_prompt("default")
         if default_prompt:
-            return default_prompt
+            return default_prompt, "default"
 
         # If everything fails, return a minimal prompt
-        return """Create a short post about this song playing on Now Wave Radio.
+        return ("""Create a short post about this song playing on Now Wave Radio.
 
 Song: "{title}" by {artist}"
 
-Must be under 200 characters."""
+Must be under 200 characters.""", "minimal_fallback")
 
     def format_prompt(self, prompt_template: str, track_info: Dict) -> str:
         """Format a prompt template with track information.
