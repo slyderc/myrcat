@@ -39,6 +39,34 @@ page_id =
 [bluesky]
 handle =
 app_password =
+# Enable image attachments for Bluesky posts
+enable_images = true
+# Enable AI-enhanced post content for Bluesky
+enable_ai_content = true
+# Templates directory for custom image generation
+templates_directory = templates/social
+# Fonts directory for custom image generation
+fonts_directory = templates/fonts
+# Post frequency limit (hours between posts)
+post_frequency = 1
+# TESTING ONLY: Set to true to bypass frequency limits and post every track
+testing_mode = false
+
+[ai_content]
+# AI model to use for content generation
+model = claude-3-7-sonnet-latest
+# API key for Anthropic
+anthropic_api_key =
+# Maximum tokens for AI generation
+max_tokens = 125
+# Temperature for content generation (0.0-1.0)
+temperature = 0.7
+# Percentage of posts to enhance with AI (0.0-1.0)
+ai_post_ratio = 0.3
+# Directory containing prompt templates
+prompts_directory = templates/prompts
+# TESTING ONLY: Set to true to use AI for all posts (100%)
+testing_mode = False
 
 [publish_exceptions]
 publish_socials = False
@@ -58,3 +86,10 @@ reporting_period = 90
 cleanup_interval = 30
 max_history = 1000
 
+[social_analytics]
+# Enable tracking social media engagement
+enable_analytics = true
+# Check frequency in hours (how often to check post engagement)
+check_frequency = 6
+# Retention period for analytics data in days
+retention_period = 90

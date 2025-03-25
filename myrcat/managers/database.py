@@ -3,6 +3,7 @@
 import logging
 import sqlite3
 from datetime import datetime
+from typing import Optional
 
 from myrcat.models import TrackInfo
 from myrcat.exceptions import DatabaseError
@@ -27,7 +28,7 @@ class DatabaseManager:
     def setup_database(self):
         """Initialize database schema if not exists."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS playouts (
@@ -51,6 +52,28 @@ class DatabaseManager:
             logging.error(f"💥 Database setup error: {e}")
             raise DatabaseError(f"Failed to setup database: {e}")
 
+    def _get_connection(self):
+        """Get a SQLite database connection.
+        
+        Returns:
+            SQLite connection object
+            
+        Raises:
+            DatabaseError: If connection fails
+        """
+        try:
+            # Enable foreign keys
+            conn = sqlite3.connect(self.db_path)
+            conn.execute("PRAGMA foreign_keys = ON")
+            
+            # Enable row factory for dict-like access
+            conn.row_factory = sqlite3.Row
+            
+            return conn
+        except sqlite3.Error as e:
+            logging.error(f"💥 Database connection error: {e}")
+            raise DatabaseError(f"Failed to connect to database: {e}")
+
     async def log_db_playout(self, track: TrackInfo):
         """Log track play to database for SoundExchange reporting.
         
@@ -68,7 +91,7 @@ class DatabaseManager:
                     presenter, timestamp
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             """
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.execute(
                     query,
                     (

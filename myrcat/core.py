@@ -85,7 +85,7 @@ class Myrcat:
             self.artwork_publish,
             self.artwork_hash_dir if self.artwork_hash_enabled else None,
         )
-        self.social = SocialMediaManager(self.config_parser)
+        self.social = SocialMediaManager(self.config_parser, self.artwork, self.db)
         self.show_handler = ShowHandler(self.config_parser)
         
         logging.info(f"📋 Track history enabled - max tracks: {self.history_max_tracks}")
@@ -259,13 +259,52 @@ class Myrcat:
 
         return True, "Valid track data"  # DEBUG message for logging as 2nd arg.
 
+    async def check_engagement_task(self):
+        """Periodic task to check social media engagement."""
+        try:
+            # Get check frequency from config (in hours)
+            check_frequency = self.config.getint("social_analytics", "check_frequency", fallback=6)
+            check_seconds = check_frequency * 3600  # Convert to seconds
+            
+            while True:
+                # Wait for the specified interval
+                await asyncio.sleep(check_seconds)
+                
+                # Check engagement
+                try:
+                    logging.debug(f"📊 Running scheduled engagement check")
+                    await self.social.check_post_engagement()
+                except Exception as e:
+                    logging.error(f"💥 Error in scheduled engagement check: {e}")
+        except asyncio.CancelledError:
+            logging.debug("📊 Engagement check task cancelled")
+        except Exception as e:
+            logging.error(f"💥 Unexpected error in engagement check task: {e}")
+            
     async def run(self):
         """Start the server and run the application."""
         try:
+            # Start engagement check task if analytics is enabled
+            analytics_enabled = self.config.getboolean("social_analytics", "enable_analytics", fallback=True)
+            
+            if analytics_enabled:
+                # Start as a background task
+                engagement_task = asyncio.create_task(self.check_engagement_task())
+                logging.info(f"📊 Social media analytics task started")
+            
+            # Start the server
             await self.server.start()
         except KeyboardInterrupt:
             logging.info("🔪 Killing server!")
         except Exception as e:
             logging.error(f"💥 Unexpected error: {e}")
         finally:
+            # Cancel analytics task if it exists
+            if 'engagement_task' in locals():
+                engagement_task.cancel()
+                try:
+                    await engagement_task
+                except asyncio.CancelledError:
+                    pass
+                    
             await self.server.stop()

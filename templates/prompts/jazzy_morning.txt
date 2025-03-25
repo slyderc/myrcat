@@ -1,0 +1,15 @@
+Create a SHORT, jazz-themed social media post about a song playing on the morning jazz show.
+
+Song: "{title}" by {artist}
+Album: {album}
+Year: {year}
+Show: {program}
+Presenter: {presenter}
+
+IMPORTANT RESTRICTIONS:
+- MUST be under 200 characters total (this is critical)
+- Use jazz-related terminology and references where appropriate
+- Include a coffee or morning-related emoji
+- Mention "Now Wave Radio" morning jazz
+- NEVER include hashtags - they will be added separately
+- Feel warm and inviting - perfect morning jazz vibes

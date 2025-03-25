@@ -34,3 +34,18 @@ class DatabaseError(MyrcatException):
 class ArtworkError(MyrcatException):
     """Raised for artwork file operation errors."""
     pass
+
+
+class ContentGenerationError(MyrcatException):
+    """Raised for AI content generation errors."""
+    pass
+
+
+class ImageGenerationError(MyrcatException):
+    """Raised for custom image generation errors."""
+    pass
+
+
+class AnalyticsError(MyrcatException):
+    """Raised for social media analytics errors."""
+    pass

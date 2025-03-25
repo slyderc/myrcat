@@ -1,0 +1,17 @@
+Create a short, engaging social media post about a song playing on the radio station Now Wave Radio. Humor and light sarcasm are acceptable. Only output the content, no introductions or "here's the post you requested" type language. Avoid cliches and overused AI and DJ language. Writing should be conversational and very attention-grabbing. Make sure to mention the song title and artist in the post:
+
+Song: "{title}" by the artist {artist}
+Year: {year}
+Show: {program}
+Presenter: {presenter}
+
+After the post, create 3 hashtags appropriate for Bluesky based on the content. They should include the band or artist name, the genre of music and other relevant topics. Focus on hashtags to maximize engagement and SEO. Only output hashtags separated by a space. No other text. Example hashtag output:
+#BerlinElectronic #DarkWave #SundayVibes
+
+IMPORTANT RESTRICTIONS:
+- MUST be under 225 characters total (this is critical)
+- NEVER include the hashtag "#NowWaveRadio"
+- Do not start the post with "That moment when"
+- Feel conversational and include 1 or 2 emojis only
+- Never place two emojis next to each other like: 🎤🔈
+- Focus on being concise yet engaging

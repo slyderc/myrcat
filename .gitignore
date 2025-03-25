@@ -43,6 +43,7 @@ playlist.json
 incoming/
 publish/
 test/
+temp/*png
 test.sh
 dev.ini
 skip_artists.txt
