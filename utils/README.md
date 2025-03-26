@@ -30,13 +30,13 @@ cp utils/testprompt.ini.example utils/myconfig.ini
 2. Edit the configuration file to add your API key and customize track information:
 
 ```bash
-nano utils/myconfig.ini
+vim utils/myconfig.ini
 ```
 
 3. Run the utility:
 
 ```bash
-./utils/testprompt.py -c utils/myconfig.ini
+./testprompt.sh -c utils/myconfig.ini
 ```
 
 ### Configuration

@@ -2,7 +2,7 @@
 
 # Myrcat - Myriad Cataloger - Now Wave Radio's Playout Publisher
 
-🐾🎶 **Myrcat** is a tool for radio stations running the Myriad Playout software from Broadcast Radio.  It helps streamline radio station operations by integrating track management, social media updates, and more, all in one tool.  Primarily developed for Now Wave Radio's needs, the script can be easily modified to fit other requirements.
+🐾🎶 **Myrcat** is a tool for radio stations running the Myriad Playout software from Broadcast Radio. It helps streamline radio station operations by integrating track management, social media updates, and more, all in one tool. Primarily developed for Now Wave Radio's needs, the script can be easily modified to fit other requirements.
 
 ## Features
 
@@ -22,7 +22,7 @@
 - SQLite3
 - Appropriate API credentials for social media services
 - Anthropic API key for AI-enhanced content (optional)
-- PIL/Pillow for image generation
+- PIL/Pillow for image handling
 
 ### Basic Installation
 
@@ -82,19 +82,23 @@ logfile = /var/log/myrcat/myrcat.log
 ### Social Media Setup
 
 1. Last.FM:
+
    - Create API application at https://www.last.fm/api/account/create
    - Set api_key and api_secret in config
 
 2. Listenbrainz:
+
    - Get token from https://listenbrainz.org/profile/
    - Set auth_token in config
 
 3. Facebook:
+
    - Create Facebook App
    - Get page access token
    - Set access_token and page_id in config
 
 4. Bluesky:
+
    - Set handle and app_password in config
    - Configure additional Bluesky settings:
      ```ini
@@ -105,15 +109,12 @@ logfile = /var/log/myrcat/myrcat.log
      enable_images = true
      # Enable AI-enhanced post content for Bluesky
      enable_ai_content = true
-     # Templates directory for custom image generation
-     templates_directory = templates/social
-     # Fonts directory for custom image generation 
-     fonts_directory = templates/fonts
      # Post frequency limit (hours between posts)
      post_frequency = 1
      ```
 
 5. AI Content Generation (Optional):
+
    - Get an Anthropic API key for Claude integration
    - Configure AI settings:
      ```ini
@@ -141,18 +142,6 @@ logfile = /var/log/myrcat/myrcat.log
      # Retention period for analytics data in days
      retention_period = 90
      ```
-
-### Template Setup
-
-For custom image generation:
-
-1. Create PNG template files in the templates/social directory
-2. Add TrueType fonts to the templates/fonts directory:
-   - bold.ttf - For track titles
-   - regular.ttf - For artist names
-   - light.ttf - For additional details
-
-## Usage
 
 ### Command Line
 
@@ -188,14 +177,98 @@ Myrcat can generate engaging social media posts using the Anthropic Claude AI mo
 - Automatic hashtag generation based on track genre and era
 - Customizable AI parameters for temperature and token length
 
-### Custom Image Generation
+#### Post Generation Process
 
-When album artwork isn't available, Myrcat can generate custom images:
+Myrcat uses a sophisticated process to select and generate content for social media posts:
 
-- Template-based image generation with track information
-- Support for custom fonts and backgrounds
-- Radio station branding and watermarks
-- Automatically attaches to social media posts
+1. **Selection Logic**: The system decides whether to use an AI-generated post or a template-based post based on:
+
+   - If testing mode is enabled (`testing_mode = true`), AI content is always used
+   - If not in testing mode, AI content is randomly selected based on the `ai_post_ratio` setting (e.g., 0.3 means 30% of posts use AI)
+   - AI generation requires a valid Anthropic API key
+
+2. **AI-Generated Post Selection Hierarchy**:
+   When using AI-generated content, prompts are selected in this order:
+
+   a. **Program-Specific Prompts** (Highest Priority)
+
+   - If the track has a program name, the system looks for a prompt file matching the program name
+   - Example: For a track on "Morning Chill" program, it looks for `morning_chill.txt`
+
+   b. **Time-of-Day Prompts** (Medium Priority)
+
+   - Based on the current hour, selects a time-appropriate prompt:
+     - 5 AM to 10 AM: `morning.txt` (morning themes)
+     - 10 AM to 3 PM: `daytime.txt` (daytime themes)
+     - 3 PM to 7 PM: `afternoon.txt` (afternoon themes)
+     - 7 PM to 11 PM: `evening.txt` (evening themes)
+     - 11 PM to 5 AM: `late_night.txt` (late night themes)
+
+   c. **Default Prompt** (Low Priority)
+
+   - Falls back to `default.txt` if no program or time-specific prompt is available
+
+   d. **Minimal Fallback** (Last Resort)
+
+   - If all else fails, uses a built-in minimal prompt template
+
+3. **Template-Based Post Selection**:
+   When using template-based posts, the selection process is:
+
+   a. **DJ Pick Template** - Used when both presenter and program information is available
+
+   - Format: "DJ Pick: {presenter} has selected {artist}'s '{title}' for your listening pleasure on {program}! 🎧"
+
+   b. **Nostalgic Template** - Used for tracks released before 2000
+
+   - Format: "Taking you back to {year} with {artist}'s '{title}' on Now Wave Radio! 🎵 #ThrowbackTunes"
+
+   c. **With Album Template** - Used when album information is available
+
+   - Format: "🎵 Now Playing on Now Wave Radio:\n{artist} - {title}\nFrom the album: {album}"
+
+   d. **Standard Template** - Default fallback
+
+   - Format: "🎵 Now Playing on Now Wave Radio:\n{artist} - {title}"
+
+4. **Hashtag Generation**:
+   - For template-based posts, hashtags are automatically generated and appended
+   - For AI-generated posts, hashtags are typically included in the AI prompt instructions
+   - Standard hashtags include:
+     - #NowWaveRadio (always included)
+     - Program-specific hashtag (e.g., #MorningChill)
+     - Artist hashtag (cleaned and formatted)
+     - #NewMusic (for current year releases)
+
+#### Prompt File Variables
+
+All prompt files support these template variables:
+
+| Variable      | Description        | Example             |
+| ------------- | ------------------ | ------------------- |
+| `{title}`     | Track title        | "Dreams"            |
+| `{artist}`    | Artist name        | "Fleetwood Mac"     |
+| `{album}`     | Album name         | "Rumours"           |
+| `{year}`      | Release year       | "1977"              |
+| `{program}`   | Radio program name | "Classic Rock Hour" |
+| `{presenter}` | DJ/Presenter name  | "DJ Smith"          |
+
+#### Creating Custom Prompts
+
+Create custom prompt files in the `prompts_directory` (default: `templates/prompts`):
+
+1. **Program-specific prompts**: Name the file after the program (lowercase with underscores)
+
+   - Example: `classic_rock_hour.txt` for the "Classic Rock Hour" program
+
+2. **Time-specific prompts**: Use time period names
+
+   - Examples: `morning.txt`, `evening.txt`, `late_night.txt`
+
+3. **Default prompt**: Use `default.txt` for the fallback prompt
+
+Prompt files should include specific instructions for the AI to generate appropriate content.
+Include restrictions like character limits and stylistic guidelines.
 
 ### Social Media Analytics
 
@@ -223,7 +296,7 @@ sqlite3 /var/lib/myrcat/myrcat.db "DELETE FROM social_media_posts WHERE posted_a
 
 ### Test Prompt Utility
 
-A utility to test AI prompts for social media posts without posting to social platforms:
+A utility to test AI prompts for social media posts without posting to platforms. This helps you develop and test prompts to see how they generate content for different tracks and scenarios:
 
 ```bash
 # Run with sample configuration
@@ -232,10 +305,55 @@ A utility to test AI prompts for social media posts without posting to social pl
 # Create your own test configuration
 cp utils/testprompt.ini.example myconfig.ini
 # Edit the file to add your API key and customize track info
-nano myconfig.ini
+vim myconfig.ini
 # Run with your config
 ./testprompt.sh -c myconfig.ini
 ```
+
+#### Testing with Time Simulation
+
+The utility supports simulating different times of day to test time-specific prompts:
+
+```ini
+[test_options]
+# Simulate a specific hour (0-23) to test time-based prompts
+simulated_hour = 8  # Will use morning prompt (5-10 AM)
+```
+
+Available time segments for testing:
+
+- Morning: 5-10 AM (`morning.txt`)
+- Daytime: 10 AM - 3 PM (`daytime.txt`)
+- Afternoon: 3-7 PM (`afternoon.txt`)
+- Evening: 7-11 PM (`evening.txt`)
+- Late Night: 11 PM - 5 AM (`late_night.txt`)
+
+#### Example Configuration
+
+```ini
+[track]
+# Track information
+artist = Bonobo
+title = Ketto
+album = Days to Come
+year = 2006
+program = Morning Chill
+presenter = DJ Ambient
+
+[ai_content]
+# AI service configuration
+model = claude-3-sonnet-20240229
+anthropic_api_key = YOUR_API_KEY_HERE
+prompts_directory = templates/prompts
+```
+
+The utility will show:
+
+- Which prompt was selected and why
+- The generated post content
+- Character count and stats
+- Extracted hashtags
+- Token usage estimation (if available)
 
 See `utils/README.md` for more details.
 
@@ -244,23 +362,25 @@ See `utils/README.md` for more details.
 ### Common Issues
 
 1. File Monitoring:
+
    - Check file permissions
    - Verify FTP transfer completion
    - Check debounce_time settings
 
 2. Social Media:
+
    - Verify API credentials
    - Check network connectivity
    - Review service rate limits
 
 3. AI Content Generation:
+
    - Verify Anthropic API key is valid
    - Check API rate limits and quotas
    - Ensure aiohttp is installed properly
 
-4. Image Generation:
+4. Image Handling:
    - Verify Pillow/PIL is installed
-   - Check template and font directories exist
    - Ensure write permissions for temporary files
 
 ### Log Locations
@@ -282,5 +402,6 @@ MIT License - See LICENSE file for details.
 ## Support
 
 For issues or questions, please file an issue on GitHub or contact:
-- website:  NowWave.Radio
+
+- website: NowWave.Radio
 - email: studio isattheaddress nowwave.radio!

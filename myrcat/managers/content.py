@@ -59,14 +59,13 @@ class ContentGenerator:
         # Load templates for non-AI posts
         self.templates = self._load_templates()
 
-
     def _load_templates(self):
         """Load post templates."""
         return {
             "standard": "🎵 Now Playing on Now Wave Radio:\n{artist} - {title}",
             "with_album": "🎵 Now Playing on Now Wave Radio:\n{artist} - {title}\nFrom the album: {album}",
-            "nostalgic": "Taking you back to {year} with {artist}'s '{title}' on Now Wave Radio! 🎵 #ThrowbackTunes",
-            "discovery": "Discover {artist} with their track '{title}' now playing on Now Wave Radio! 🎵 #NewMusicDiscovery",
+            "nostalgic": "Taking you back to {year} with {artist}'s '{title}' on Now Wave Radio! 🎵",
+            "discovery": "Discover {artist} with their track '{title}' now playing on Now Wave Radio! 🎵",
             "dj_pick": "DJ Pick: {presenter} has selected {artist}'s '{title}' for your listening pleasure on {program}! 🎧",
         }
 
@@ -82,7 +81,7 @@ class ContentGenerator:
         template_name = "unknown"
         source_type = "template"
         prompt_name = None
-        
+
         # First try using built-in templates based on track attributes
         if track.presenter and track.program:
             template = self.templates["dj_pick"]
@@ -131,7 +130,7 @@ class ContentGenerator:
         metadata = {
             "source_type": source_type,
             "template_name": template_name,
-            "prompt_name": None
+            "prompt_name": None,
         }
 
         # Use AI if testing mode is enabled or random chance is below threshold
@@ -142,31 +141,37 @@ class ContentGenerator:
                 logging.debug(f"🧪 Using AI for post (testing mode enabled)")
 
             try:
-                enhanced, prompt_metadata = await self._get_ai_enhanced_description(track)
+                enhanced, prompt_metadata = await self._get_ai_enhanced_description(
+                    track
+                )
                 if enhanced:
-                    metadata.update({
-                        "source_type": "ai",
-                        "prompt_name": prompt_metadata.get("prompt_name")
-                    })
+                    metadata.update(
+                        {
+                            "source_type": "ai",
+                            "prompt_name": prompt_metadata.get("prompt_name"),
+                        }
+                    )
                     return enhanced, metadata
             except Exception as e:
                 logging.error(f"💥 Error generating AI description: {e}")
 
         return description, metadata
 
-    async def _get_ai_enhanced_description(self, track: TrackInfo) -> tuple[Optional[str], dict]:
+    async def _get_ai_enhanced_description(
+        self, track: TrackInfo
+    ) -> tuple[Optional[str], dict]:
         """Generate an AI-enhanced description using Anthropic's Claude.
 
         Args:
             track: TrackInfo object containing track information
 
         Returns:
-            Tuple of (AI-generated description or None if generation failed, 
+            Tuple of (AI-generated description or None if generation failed,
                      metadata dict with prompt info)
         """
         prompt_name = "unknown"
         metadata = {"prompt_name": prompt_name}
-        
+
         try:
             # Create track info dictionary for prompt template
             track_dict = {
@@ -179,7 +184,9 @@ class ContentGenerator:
             }
 
             # Get the appropriate prompt template for this track
-            prompt_template, selected_prompt_name = self.prompt_manager.select_prompt(track_dict)
+            prompt_template, selected_prompt_name = self.prompt_manager.select_prompt(
+                track_dict
+            )
             prompt_name = selected_prompt_name
             metadata["prompt_name"] = prompt_name
 
@@ -263,7 +270,7 @@ class ContentGenerator:
         # If this is AI-generated content, return an empty string (no hashtags)
         if is_ai_content:
             return ""
-            
+
         # Otherwise, generate hashtags for non-AI content
         hashtags = ["#NowWaveRadio"]
 
@@ -273,21 +280,26 @@ class ContentGenerator:
                 word.capitalize() for word in track.program.split()
             )
             hashtags.append(program_hashtag)
-            
+
         # Add artist/band hashtag
         if track.artist:
             # Clean up artist name for hashtag
             # Split by common separators and take the first part (main artist)
-            main_artist = track.artist.split(" feat.")[0].split(" ft.")[0].split(" &")[0].split(" and ")[0]
-            
+            main_artist = (
+                track.artist.split(" feat.")[0]
+                .split(" ft.")[0]
+                .split(" &")[0]
+                .split(" and ")[0]
+            )
+
             # Create a clean hashtag (alphanumeric only, no spaces)
             clean_artist = "".join(
                 word.capitalize() for word in main_artist.split() if word
             )
-            
+
             # Remove any non-alphanumeric characters except underscores
-            clean_artist = re.sub(r'[^\w]', '', clean_artist)
-            
+            clean_artist = re.sub(r"[^\w]", "", clean_artist)
+
             # Only add if we have something meaningful
             if clean_artist:
                 artist_hashtag = f"#{clean_artist}"
