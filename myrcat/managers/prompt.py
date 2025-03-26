@@ -215,6 +215,9 @@ IMPORTANT RESTRICTIONS:
         Returns:
             Tuple of (selected prompt content, prompt name)
         """
+        # Track which prompt was selected (for testing and logging)
+        self.selected_prompt_name = "unknown"
+        
         # This is where we can implement logic to select different prompts based on
         # show name, time of day, genre, etc.
 
@@ -224,6 +227,7 @@ IMPORTANT RESTRICTIONS:
             program_name = track_info["program"].lower().replace(" ", "_")
             show_prompt = self.get_prompt(program_name)
             if show_prompt:
+                self.selected_prompt_name = program_name
                 return show_prompt, program_name
 
         # Try time-of-day based prompts - check each one before falling back
@@ -236,6 +240,7 @@ IMPORTANT RESTRICTIONS:
             morning_prompt = self.get_prompt(prompt_file)
             if morning_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
+                self.selected_prompt_name = prompt_file
                 return morning_prompt, prompt_file
                 
         # Daytime (10 AM - 3 PM)
@@ -245,6 +250,7 @@ IMPORTANT RESTRICTIONS:
             daytime_prompt = self.get_prompt(prompt_file)
             if daytime_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
+                self.selected_prompt_name = prompt_file
                 return daytime_prompt, prompt_file
                 
         # Afternoon (3 PM - 7 PM)
@@ -254,6 +260,7 @@ IMPORTANT RESTRICTIONS:
             afternoon_prompt = self.get_prompt(prompt_file)
             if afternoon_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
+                self.selected_prompt_name = prompt_file
                 return afternoon_prompt, prompt_file
                 
         # Evening (7 PM - 11 PM)
@@ -263,6 +270,7 @@ IMPORTANT RESTRICTIONS:
             evening_prompt = self.get_prompt(prompt_file)
             if evening_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
+                self.selected_prompt_name = prompt_file
                 return evening_prompt, prompt_file
                 
         # Late Night (11 PM - 5 AM)
@@ -272,14 +280,17 @@ IMPORTANT RESTRICTIONS:
             late_night_prompt = self.get_prompt(prompt_file)
             if late_night_prompt:
                 logging.debug(f"📝 Using time-based prompt: {prompt_file}.txt")
+                self.selected_prompt_name = prompt_file
                 return late_night_prompt, prompt_file
 
         # Fall back to default prompt
         default_prompt = self.get_prompt("default")
         if default_prompt:
+            self.selected_prompt_name = "default"
             return default_prompt, "default"
 
         # If everything fails, return a minimal prompt
+        self.selected_prompt_name = "minimal_fallback"
         return ("""Create a short post about this song playing on Now Wave Radio.
 
 Song: "{title}" by {artist}"

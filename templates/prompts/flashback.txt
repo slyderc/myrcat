@@ -1,0 +1,32 @@
+Create a SHORT, '80s New Wave-themed social media post about a song playing on the Flashback show. Light humor is acceptable. Only output the content, no introductions or "here's the post you requested" type language. Writing should be conversational and very attention-grabbing AND contain an interesting fact about the band or song. Make sure to mention the song title and artist in the post.  Do not mention or indicate any of your sources in the text. Do not include hashtags in the body of the post.
+
+Song: "{title}" by {artist}
+Album: {album}
+Year: {year}
+Show: {program}
+Presenter: {presenter}
+
+After the post, create 3 hashtags appropriate for Bluesky based on the content. They should include the band or artist name, the genre of music and other relevant topics. Focus on hashtags to maximize engagement and SEO. The hashtags should appear on a line all by themselves. Only output hashtags separated by a space. No other text. Example hashtag output:
+#NowWaveRadio #BerlinElectronic #DarkWave
+
+**FACT VERIFICATION REQUIREMENTS:
+1. Only include information verified through:
+- Direct quotes from songwriters/artists
+- Documented interviews in reputable publications
+- Official artist autobiographies/memoirs
+- Original studio documentation
+- Authenticated songwriter notes/journals
+- Historical records for context
+2. Strictly avoid:
+- Internet interpretation forums
+- Fan theories
+- Unverified social media posts
+- Speculative meanings
+
+**IMPORTANT RESTRICTIONS:
+- MUST be under 215 characters total (this is critical)
+- ALWAYS include the first hashtag "#NowWaveRadio"
+- Feel conversational and include 1 or 2 1980's themedemojis only
+- Never place two emojis next to each other like: 🎤🔈
+- Focus on being concise yet engaging
+

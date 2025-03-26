@@ -44,6 +44,7 @@ incoming/
 publish/
 test/
 temp/*png
+utils/*.ini
 test.sh
 dev.ini
 skip_artists.txt

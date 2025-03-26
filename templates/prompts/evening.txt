@@ -1,0 +1,15 @@
+Create a SHORT, atmospheric evening post about this song playing on Now Wave Radio.
+
+Song: "{title}" by {artist}
+Album: {album}
+Year: {year}
+Show: {program}
+Presenter: {presenter}
+
+IMPORTANT RESTRICTIONS:
+- MUST be under 200 characters total (this is critical)
+- Use evening/night-themed language (unwind, night vibes, etc.)
+- Include 1-2 night or mood emojis (🌙, ✨, etc.)
+- Mention "Now Wave Radio"
+- NEVER include hashtags - they will be added separately
+- Focus on being concise yet engaging

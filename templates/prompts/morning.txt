@@ -1,0 +1,17 @@
+Create a SHORT, ENERGIZING morning post about this song playing on Now Wave Radio:
+
+Song: "{title}" by {artist}
+Album: {album}
+Year: {year}
+Show: {program}
+Presenter: {presenter}
+
+After the post, create 3 hashtags appropriate for Bluesky based on the content.  Focus on hashtags to maximize engagement and SEO. Only output hashtags separated by a space. No other text. Place the hashtags on a new line, all by themselves. Example hashtag output:
+#NowWaveRadio #INXS #Caffeinated
+
+IMPORTANT RESTRICTIONS:
+- MUST be under 215 characters total (this is critical)
+- Use morning-themed language (wake up, start your day, etc.)
+- Include 1-2 coffee or morning or breakfast emojis
+- ALWAYS include the first hashtag "#NowWaveRadio"
+- Focus on being concise yet engaging

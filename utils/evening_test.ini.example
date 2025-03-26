@@ -1,0 +1,59 @@
+[track]
+# Evening show test track information
+artist = Massive Attack
+title = Teardrop
+album = Mezzanine
+year = 1998
+program = Evening Vibes
+presenter = DJ Nocturnal
+publisher = Virgin Records
+isrc = UK-VR2-98-12345
+
+[ai_content]
+# AI service configuration
+model = claude-3-sonnet-20240229
+# IMPORTANT: You need a real API key to use AI generation
+# Without an API key, the utility will use templates instead
+anthropic_api_key = YOUR_API_KEY_HERE
+max_tokens = 150
+temperature = 0.7
+# Prompt directory - Options:
+# - Absolute path:            /path/to/prompts
+# - Relative to project root: prompts
+# - Shared with main app:     myrcat/prompts
+prompts_directory = prompts
+# This will be overridden by the utility to ensure AI content generation
+testing_mode = true
+
+[test_options]
+# Simulate evening time (8 PM)
+# Valid values: 0-23 (representing hours of the day)
+# Different time segments that trigger specific prompts:
+#  Morning: 5-9 (5:00 AM - 9:59 AM)
+#  Daytime: 10-14 (10:00 AM - 2:59 PM)
+#  Afternoon: 15-18 (3:00 PM - 6:59 PM)
+#  Evening: 19-22 (7:00 PM - 10:59 PM)
+#  Late Night: 23-4 (11:00 PM - 4:59 AM)
+#
+# NOTE: Prompt selection priority:
+# 1. Program-specific prompt (e.g., "evening_vibes.txt" for "Evening Vibes" program)
+# 2. Time-based prompt (e.g., "evening.txt" for 8 PM)
+# 3. Default prompt ("default.txt")
+#
+# To test time-based prompts directly, either:
+# - Remove the "program" field from the [track] section, or
+# - Ensure there's no prompt file matching the program name
+simulated_hour = 20
+
+[bluesky]
+# These are used for hashtag generation logic only, not for posting
+enable_ai_content = true
+image_width = 600
+image_height = 600
+# This ensures the utility doesn't try to post
+testing_mode = true
+
+[publish_exceptions]
+# These settings ensure no actual posts are made
+publish_socials = false
+disable_services = Facebook,LastFM,ListenBrainz,Bluesky

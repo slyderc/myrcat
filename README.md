@@ -219,6 +219,26 @@ sqlite3 /var/lib/myrcat/myrcat.db "DELETE FROM social_media_engagement WHERE che
 sqlite3 /var/lib/myrcat/myrcat.db "DELETE FROM social_media_posts WHERE posted_at < datetime('now', '-90 days');"
 ```
 
+## Development Utilities
+
+### Test Prompt Utility
+
+A utility to test AI prompts for social media posts without posting to social platforms:
+
+```bash
+# Run with sample configuration
+./testprompt.sh -c utils/testprompt.ini.example
+
+# Create your own test configuration
+cp utils/testprompt.ini.example myconfig.ini
+# Edit the file to add your API key and customize track info
+nano myconfig.ini
+# Run with your config
+./testprompt.sh -c myconfig.ini
+```
+
+See `utils/README.md` for more details.
+
 ## Troubleshooting
 
 ### Common Issues
