@@ -1,3 +1,4 @@
+The day-of-the-week is: {dow}
 Create a SHORT, '80s New Wave-themed social media post about a song playing on the Flashback show. Light humor is acceptable. Only output the content, no introductions or "here's the post you requested" type language. Writing should be conversational and very attention-grabbing AND contain an interesting fact about the band or song. Make sure to mention the song title and artist in the post.  Do not mention or indicate any of your sources in the text. Do not include hashtags in the body of the post.
 
 Song: "{title}" by {artist}

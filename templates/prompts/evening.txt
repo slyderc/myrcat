@@ -1,3 +1,4 @@
+The day-of-the-week is: {dow}
 Create a SHORT, atmospheric evening post about this song playing on Now Wave Radio:
 
 Song: "{title}" by {artist}

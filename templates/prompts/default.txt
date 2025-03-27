@@ -1,3 +1,4 @@
+The day-of-the-week is: {dow}
 Create a short, engaging social media post about a song playing on the radio station Now Wave Radio. Humor and light sarcasm are acceptable. Only output the content, no introductions or "here's the post you requested" type language. Avoid cliches and overused AI and DJ language. Writing should be conversational and very attention-grabbing. Make sure to mention the song title and artist in the post:
 
 Song: "{title}" by the artist {artist}
