@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
@@ -195,10 +196,15 @@ class Myrcat:
 
             # Delay publishing to the website to accommodate stream delay
             delay_seconds = self.config.getint("general", "publish_delay", fallback=0)
-
+            
             if delay_seconds > 0:
+                # Calculate the future timestamp when the track will be published
+                now = datetime.now()
+                future_time = now + timedelta(seconds=delay_seconds)
+                future_timestamp = future_time.strftime("%H:%M:%S")
+                
                 logging.info(
-                    f'Queuing "{track.title}" [{track.year}] - {track.artist} in {delay_seconds} seconds'
+                    f'"{track.title}" [{track.year}] - {track.artist}; queued for {future_timestamp}'
                 )
             else:
                 logging.info(f'"{track.title}" [{track.year}] - {track.artist}')
