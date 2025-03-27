@@ -42,6 +42,9 @@ ENV/
 playlist.json
 incoming/
 publish/
+templates/prompts/*.txt
+templates/social/*.png
+templates/fonts/*.ttf
 test/
 temp/*png
 utils/*.ini
