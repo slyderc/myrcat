@@ -10,7 +10,15 @@ from myrcat.exceptions import DatabaseError
 
 
 class DatabaseManager:
-    """Manages SQLite database operations for track logging."""
+    """Manages SQLite database operations for track logging.
+    
+    TODO: Potential improvements:
+    - Implement database versioning and migrations
+    - Add data cleanup/retention policies for old records
+    - Add functions to export data for reporting (CSV, JSON)
+    - Implement query caching for frequently accessed data
+    - Add database connection pooling for performance
+    """
 
     def __init__(self, db_path: str):
         """Initialize the database manager.

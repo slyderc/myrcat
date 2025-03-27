@@ -9,7 +9,16 @@ from myrcat.exceptions import ConfigurationError
 
 
 class Config:
-    """Configuration handler for Myrcat."""
+    """Configuration handler for Myrcat.
+    
+    TODO: Potential improvements:
+    - Add schema validation for configuration files
+    - Support for environment variable overrides
+    - Implement configuration profiles (dev, prod, test)
+    - Add automatic backup of configuration files
+    - Support for remote configuration sources
+    - Add configuration change notifications
+    """
     
     def __init__(self, config_path: str):
         """Initialize configuration.

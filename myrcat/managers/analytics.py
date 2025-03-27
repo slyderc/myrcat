@@ -1,15 +1,26 @@
 """Social media analytics manager for Myrcat."""
 
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Tuple
 
 from myrcat.models import TrackInfo
 from myrcat.managers.database import DatabaseManager
 
 
 class SocialMediaAnalytics:
-    """Tracks and analyzes social media engagement."""
+    """Tracks and analyzes social media engagement.
+    
+    TODO: Potential improvements:
+    - Add more advanced analytics (engagement trends, peak times)
+    - Implement anomaly detection for unusual engagement spikes
+    - Support for exporting data to external analytics platforms
+    - Add visualizations (charts, graphs) for reports
+    - Implement A/B testing for post effectiveness
+    - Support for scheduled/periodic report generation
+    """
     
     def __init__(self, config, db_manager: DatabaseManager):
         """Initialize with config and database manager.
@@ -21,14 +32,36 @@ class SocialMediaAnalytics:
         self.config = config
         self.db = db_manager
         
+        # Track previous analytics values for change indicators
+        self.previous_analytics = {}
+        self.last_report_time = None
+        
+        # Load settings from config
+        self.load_config()
+        
+    def load_config(self):
+        """Load settings from configuration.
+        
+        This method can be called to reload configuration settings when the
+        config file changes without requiring re-initialization of the class.
+        """
         # Get analytics settings
-        self.enabled = config.getboolean("social_analytics", "enable_analytics", fallback=True)
-        self.check_frequency = config.getint("social_analytics", "check_frequency", fallback=6)
-        self.retention_period = config.getint("social_analytics", "retention_period", fallback=90)
+        self.enabled = self.config.getboolean("social_analytics", "enable_analytics", fallback=True)
+        self.check_frequency = self.config.getint("social_analytics", "check_frequency", fallback=6)
+        self.retention_period = self.config.getint("social_analytics", "retention_period", fallback=90)
+        
+        # Report settings
+        self.generate_reports = self.config.getboolean("social_analytics", "generate_reports", fallback=False)
+        self.reports_directory = Path(self.config.get("social_analytics", "reports_directory", fallback="reports"))
         
         if self.enabled:
             self.ensure_tables()
             logging.info(f"✅ Social media analytics enabled (check frequency: {self.check_frequency}h)")
+            
+            # Create reports directory if enabled
+            if self.generate_reports:
+                os.makedirs(self.reports_directory, exist_ok=True)
+                logging.info(f"📊 Analytics reports enabled - directory: {self.reports_directory}")
         else:
             logging.info(f"⛔️ Social media analytics disabled")
         
@@ -45,6 +78,7 @@ class SocialMediaAnalytics:
                         track_id INTEGER,
                         posted_at DATETIME NOT NULL,
                         message TEXT,
+                        deleted INTEGER DEFAULT 0,
                         FOREIGN KEY (track_id) REFERENCES playouts(id)
                     )
                 """)
@@ -178,7 +212,7 @@ class SocialMediaAnalytics:
             with self.db._get_connection() as conn:
                 # Get internal post ID
                 cursor = conn.execute(
-                    "SELECT id FROM social_media_posts WHERE platform = ? AND post_id = ?",
+                    "SELECT id FROM social_media_posts WHERE platform = ? AND post_id = ? AND deleted = 0",
                     (platform, post_id)
                 )
                 result = cursor.fetchone()
@@ -207,6 +241,42 @@ class SocialMediaAnalytics:
                 return True
         except Exception as e:
             logging.error(f"💥 Error updating engagement: {e}")
+            return False
+            
+    async def mark_post_as_deleted(self, platform: str, post_id: str) -> bool:
+        """Mark a post as deleted in the database.
+        
+        Args:
+            platform: Social media platform name
+            post_id: Platform-specific post ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.enabled:
+            return False
+            
+        try:
+            with self.db._get_connection() as conn:
+                # Update the post with deleted flag
+                cursor = conn.execute(
+                    """
+                    UPDATE social_media_posts 
+                    SET deleted = 1
+                    WHERE platform = ? AND post_id = ?
+                    """,
+                    (platform, post_id)
+                )
+                
+                # Check if any rows were affected
+                if cursor.rowcount > 0:
+                    logging.info(f"🗑️ Marked {platform} post {post_id} as deleted")
+                    return True
+                else:
+                    logging.warning(f"⚠️ No post found to mark as deleted: {platform} {post_id}")
+                    return False
+        except Exception as e:
+            logging.error(f"💥 Error marking post as deleted: {e}")
             return False
             
     async def get_top_tracks(self, days: int = 30, limit: int = 10) -> List[Dict[str, Any]]:
@@ -238,6 +308,7 @@ class SocialMediaAnalytics:
                     JOIN social_media_posts smp ON p.id = smp.track_id
                     JOIN social_media_engagement sme ON smp.id = sme.post_id
                     WHERE smp.posted_at > ?
+                    AND smp.deleted = 0
                     GROUP BY p.artist, p.title, p.album
                     ORDER BY (total_likes + total_shares * 2 + total_comments * 3) DESC
                     LIMIT ?
@@ -311,7 +382,7 @@ class SocialMediaAnalytics:
                     """
                     SELECT COUNT(*) as post_count
                     FROM social_media_posts
-                    WHERE platform = ? AND posted_at > ?
+                    WHERE platform = ? AND posted_at > ? AND deleted = 0
                     """,
                     (platform, cutoff_date)
                 )
@@ -330,7 +401,7 @@ class SocialMediaAnalytics:
                         AVG(sme.comments) as avg_comments
                     FROM social_media_posts smp
                     JOIN social_media_engagement sme ON smp.id = sme.post_id
-                    WHERE smp.platform = ? AND smp.posted_at > ?
+                    WHERE smp.platform = ? AND smp.posted_at > ? AND smp.deleted = 0
                     """,
                     (platform, cutoff_date)
                 )
@@ -354,3 +425,174 @@ class SocialMediaAnalytics:
                 "days": days,
                 "error": str(e)
             }
+            
+    def _format_change_indicator(self, current: int, key: str) -> str:
+        """Format a change indicator (↑/↓/-) with value.
+        
+        Args:
+            current: Current value
+            key: Dictionary key to compare with previous value
+            
+        Returns:
+            Formatted change indicator string
+        """
+        if key not in self.previous_analytics:
+            return "-"
+            
+        previous = self.previous_analytics[key]
+        change = current - previous
+        
+        if change > 0:
+            return f"↑{change}"
+        elif change < 0:
+            return f"↓{abs(change)}"
+        else:
+            return "-"
+            
+    async def generate_text_report(self, analytics_data: Dict[str, Any]) -> None:
+        """Generate a text-based analytics report.
+        
+        Args:
+            analytics_data: Analytics data from get_social_analytics
+        """
+        if not self.enabled or not self.generate_reports:
+            return
+            
+        try:
+            now = datetime.now()
+            timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+            report_file = self.reports_directory / f"social_analytics_{timestamp}.txt"
+            
+            # Calculate time since last report
+            time_ago = ""
+            if self.last_report_time:
+                time_diff = now - self.last_report_time
+                hours = int(time_diff.total_seconds() / 3600)
+                if hours < 24:
+                    time_ago = f"[Last run: {hours} hours ago]"
+                else:
+                    days = int(hours / 24)
+                    time_ago = f"[Last run: {days} days ago]"
+            
+            with open(report_file, "w") as f:
+                # Write report header
+                day_name = now.strftime("%A")
+                date_time = now.strftime("%B %d at %H:%M")
+                f.write(f"SOCIAL MEDIA ANALYTICS REPORT\n")
+                f.write(f"===============================\n")
+                f.write(f"Report Run: {day_name}, {date_time} {time_ago}\n\n")
+                
+                if not analytics_data.get("enabled", False):
+                    f.write("Analytics are currently disabled.\n")
+                    return
+                    
+                f.write(f"Report covering the last {analytics_data.get('days', 30)} days\n\n")
+                
+                # Platform statistics
+                f.write("PLATFORM STATISTICS\n")
+                f.write("-------------------\n")
+                platforms = analytics_data.get("platforms", {})
+                
+                for platform_name, stats in platforms.items():
+                    f.write(f"\n{platform_name}\n")
+                    
+                    post_count = stats.get("post_count", 0)
+                    post_key = f"{platform_name}_post_count"
+                    post_indicator = self._format_change_indicator(post_count, post_key)
+                    f.write(f"  Posts:           {post_count:4d} {post_indicator:>6}\n")
+                    
+                    likes = stats.get("total_likes", 0)
+                    likes_key = f"{platform_name}_total_likes"
+                    likes_indicator = self._format_change_indicator(likes, likes_key)
+                    f.write(f"  Total Likes:     {likes:4d} {likes_indicator:>6}\n")
+                    
+                    shares = stats.get("total_shares", 0)
+                    shares_key = f"{platform_name}_total_shares"
+                    shares_indicator = self._format_change_indicator(shares, shares_key)
+                    f.write(f"  Total Shares:    {shares:4d} {shares_indicator:>6}\n")
+                    
+                    comments = stats.get("total_comments", 0)
+                    comments_key = f"{platform_name}_total_comments"
+                    comments_indicator = self._format_change_indicator(comments, comments_key)
+                    f.write(f"  Total Comments:  {comments:4d} {comments_indicator:>6}\n")
+                    
+                    avg_likes = stats.get("avg_likes", 0)
+                    f.write(f"  Avg. Likes:      {avg_likes:.2f}\n")
+                    
+                    avg_shares = stats.get("avg_shares", 0)
+                    f.write(f"  Avg. Shares:     {avg_shares:.2f}\n")
+                    
+                    avg_comments = stats.get("avg_comments", 0)
+                    f.write(f"  Avg. Comments:   {avg_comments:.2f}\n")
+                    
+                # Top tracks
+                f.write("\n\nTOP TRACKS BY ENGAGEMENT\n")
+                f.write("----------------------\n")
+                
+                top_tracks = analytics_data.get("top_tracks", [])
+                if not top_tracks:
+                    f.write("No track data available for this period.\n")
+                else:
+                    # Column headers
+                    f.write(f"{'Track':42s} {'Artist':30s} {'Posts':5s} {'Likes':7s} {'Shares':7s} {'Comments':9s}\n")
+                    f.write(f"{'-'*42} {'-'*30} {'-'*5} {'-'*7} {'-'*7} {'-'*9}\n")
+                    
+                    # Track data
+                    for track in top_tracks:
+                        title = track.get("title", "Unknown")[:40]
+                        artist = track.get("artist", "Unknown")[:28]
+                        post_count = track.get("post_count", 0)
+                        likes = track.get("total_likes", 0)
+                        shares = track.get("total_shares", 0)
+                        comments = track.get("total_comments", 0)
+                        
+                        # Prepare track key for change indicators
+                        track_key = f"track_{artist}_{title}"
+                        
+                        # Get change indicators
+                        likes_key = f"{track_key}_likes"
+                        likes_indicator = self._format_change_indicator(likes, likes_key)
+                        
+                        shares_key = f"{track_key}_shares"
+                        shares_indicator = self._format_change_indicator(shares, shares_key)
+                        
+                        comments_key = f"{track_key}_comments"
+                        comments_indicator = self._format_change_indicator(comments, comments_key)
+                        
+                        f.write(f"{title:42s} {artist:30s} {post_count:5d} {likes:5d} {likes_indicator:>5} "
+                               f"{shares:5d} {shares_indicator:>5} {comments:5d} {comments_indicator:>5}\n")
+                
+                # Update previous analytics for change tracking
+                self._update_previous_analytics(analytics_data)
+                
+            # Update last report time
+            self.last_report_time = now
+            logging.info(f"📊 Generated analytics report: {report_file}")
+            
+        except Exception as e:
+            logging.error(f"💥 Error generating analytics report: {e}")
+            
+    def _update_previous_analytics(self, analytics_data: Dict[str, Any]) -> None:
+        """Update previous analytics values for change tracking.
+        
+        Args:
+            analytics_data: Current analytics data
+        """
+        # Track platform stats
+        platforms = analytics_data.get("platforms", {})
+        for platform_name, stats in platforms.items():
+            self.previous_analytics[f"{platform_name}_post_count"] = stats.get("post_count", 0)
+            self.previous_analytics[f"{platform_name}_total_likes"] = stats.get("total_likes", 0)
+            self.previous_analytics[f"{platform_name}_total_shares"] = stats.get("total_shares", 0)
+            self.previous_analytics[f"{platform_name}_total_comments"] = stats.get("total_comments", 0)
+            
+        # Track top track stats
+        top_tracks = analytics_data.get("top_tracks", [])
+        for track in top_tracks:
+            title = track.get("title", "Unknown")[:40]
+            artist = track.get("artist", "Unknown")[:28]
+            track_key = f"track_{artist}_{title}"
+            
+            self.previous_analytics[f"{track_key}_likes"] = track.get("total_likes", 0)
+            self.previous_analytics[f"{track_key}_shares"] = track.get("total_shares", 0)
+            self.previous_analytics[f"{track_key}_comments"] = track.get("total_comments", 0)

@@ -15,7 +15,16 @@ from myrcat.managers.prompt import PromptManager
 
 
 class ContentGenerator:
-    """Generates AI-enhanced content for social media posts."""
+    """Generates AI-enhanced content for social media posts.
+    
+    TODO: Potential improvements:
+    - Support for multiple AI providers (OpenAI, Anthropic, etc.)
+    - Implement content caching to reduce API costs
+    - Add content moderation/filtering
+    - Support for themed content based on genres or events
+    - Implement feedback loop to improve future content
+    - Add support for generating images with AI
+    """
 
     def __init__(self, config):
         """Initialize with configuration.
@@ -24,26 +33,38 @@ class ContentGenerator:
             config: ConfigParser object with configuration
         """
         self.config = config
-
+        
+        # Load settings from config
+        self.load_config()
+        
+        # Load templates for non-AI posts
+        self.templates = self._load_templates()
+        
+    def load_config(self):
+        """Load settings from configuration.
+        
+        This method can be called to reload configuration settings when the
+        config file changes without requiring re-initialization of the class.
+        """
         # Get AI configuration
-        self.anthropic_api_key = config.get(
+        self.anthropic_api_key = self.config.get(
             "ai_content", "anthropic_api_key", fallback=""
         )
-        self.model = config.get(
+        self.model = self.config.get(
             "ai_content", "model", fallback="claude-3-7-sonnet-latest"
         )
-        self.max_tokens = config.getint("ai_content", "max_tokens", fallback=150)
-        self.temperature = config.getfloat("ai_content", "temperature", fallback=0.7)
-        self.ai_post_ratio = config.getfloat(
+        self.max_tokens = self.config.getint("ai_content", "max_tokens", fallback=150)
+        self.temperature = self.config.getfloat("ai_content", "temperature", fallback=0.7)
+        self.ai_post_ratio = self.config.getfloat(
             "ai_content", "ai_post_ratio", fallback=0.3
         )
-        self.testing_mode = config.getboolean(
+        self.testing_mode = self.config.getboolean(
             "ai_content", "testing_mode", fallback=False
         )
 
         # Initialize prompt manager
         prompts_dir = Path(
-            config.get("ai_content", "prompts_directory", fallback="templates/prompts")
+            self.config.get("ai_content", "prompts_directory", fallback="templates/prompts")
         )
         self.prompt_manager = PromptManager(prompts_dir)
 
@@ -55,9 +76,6 @@ class ContentGenerator:
             logging.info(
                 f"🤖 AI content enabled for {int(self.ai_post_ratio * 100)}% of posts using {self.model}"
             )
-
-        # Load templates for non-AI posts
-        self.templates = self._load_templates()
 
     def _load_templates(self):
         """Load post templates."""

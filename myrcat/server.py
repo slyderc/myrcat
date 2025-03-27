@@ -10,7 +10,15 @@ from myrcat.utils import decode_json_data
 
 
 class MyriadServer:
-    """Socket server that receives Myriad track data."""
+    """Socket server that receives Myriad track data.
+    
+    TODO: Potential improvements:
+    - Add authentication for incoming connections
+    - Support TLS/SSL for encrypted connections
+    - Implement protocol versioning for compatibility
+    - Add metrics for connection handling (success rate, processing time)
+    - Support multiple simultaneous connections with proper concurrency handling
+    """
 
     def __init__(
         self, 

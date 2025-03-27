@@ -1,10 +1,19 @@
-"""Utility functions for Myrcat."""
+"""Utility functions for Myrcat.
+
+TODO: Potential improvements:
+- Add more comprehensive logging with rotation
+- Implement performance metrics for monitoring
+- Add utility functions for common operations
+- Create helper functions for error handling
+- Implement more robust JSON handling
+- Add data validation utilities
+"""
 
 import json
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, List
 
 
 def setup_logging(log_file: str, log_level: str) -> None:
@@ -85,11 +94,11 @@ def decode_json_data(data: bytes) -> Dict[str, Any]:
             )  # Replace invalid characters
             logging.debug("Invalid characters replaced with placeholders.")
 
-    # Perform additional clean-up: quote quotes(") & strip ctrl-chars except space
+    # Perform additional clean-up: strip ctrl-chars except space and replace backslashes
     decoded = "".join(
         char for char in decoded_data if char >= " " or char in ["\n"]
     )
-    decoded = decoded_data.replace("\\", "/")
+    decoded = decoded.replace("\\", "/")
 
     try:
         return json.loads(decoded)

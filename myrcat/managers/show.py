@@ -9,7 +9,20 @@ from myrcat.exceptions import MyrcatException
 
 
 class ShowHandler:
-    """Manages radio show transitions and announcements."""
+    """Manages radio show transitions and announcements.
+    
+    This class handles the detection of show transitions based on the 'program'
+    field in track metadata. It has placeholder implementations for:
+    
+    1. Loading show schedules (currently returns empty schedule)
+    2. Getting show information (currently returns None)
+    3. Announcing show transitions (currently only logs, doesn't post to social media)
+    
+    Future implementations should:
+    - Load show schedules from config or external files
+    - Create proper ShowInfo objects from the schedule
+    - Actually post to social media platforms when shows start/end
+    """
 
     def __init__(self, config: configparser.ConfigParser):
         """Initialize the show handler.
@@ -19,17 +32,40 @@ class ShowHandler:
         """
         self.config = config
         self.current_show: Optional[ShowInfo] = None
+        # Load settings from config
+        self.load_config()
+        
+    def load_config(self):
+        """Load settings from configuration.
+        
+        This method can be called to reload configuration settings when the
+        config file changes without requiring re-initialization of the class.
+        """
         # Maybe load schedule from config or external file
         self.schedule = self.load_schedule()
 
     def load_schedule(self):
         """Load show schedule from configuration.
         
+        TODO: Implement schedule loading from configuration or external file.
+        Expected format in config.ini:
+        
+        [shows]
+        schedule_file = path/to/schedule.json
+        
+        Or direct show definitions:
+        
+        [shows.morning]
+        title = Morning Show
+        presenter = DJ Morning
+        start = 06:00
+        end = 10:00
+        
         Returns:
-            Show schedule data
+            Dictionary containing show schedule data
         """
-        # This is a placeholder for loading a schedule from a file or the config
-        # For now, return an empty dict
+        # PLACEHOLDER: Implementation needed to load actual schedule
+        # Currently returns empty dictionary - no shows will be detected
         return {}
 
     def get_show_info(self, show_name: str) -> Optional[ShowInfo]:
@@ -40,9 +76,24 @@ class ShowHandler:
             
         Returns:
             ShowInfo object if found, None otherwise
+            
+        TODO: Implement lookup in self.schedule to find and return
+        show information as a ShowInfo object when schedule loading
+        is implemented.
         """
-        # This is a placeholder for getting show information from the schedule
-        # In a real implementation, this would return actual show data
+        # PLACEHOLDER: Would look up show_name in self.schedule
+        # Currently always returns None - no show transitions will occur
+        
+        # Example implementation (once schedule is loaded):
+        # if show_name in self.schedule:
+        #     show_data = self.schedule[show_name]
+        #     return ShowInfo(
+        #         title=show_data["title"],
+        #         presenter=show_data["presenter"],
+        #         start_time=show_data["start_time"],
+        #         end_time=show_data["end_time"],
+        #         description=show_data.get("description")
+        #     )
         return None
 
     async def check_show_transition(self, track: TrackInfo) -> bool:
@@ -84,16 +135,20 @@ class ShowHandler:
         
         Args:
             show: Show information
+            
+        TODO: Integrate with SocialMediaManager to actually post to social media
+        platforms when a new show starts.
         """
-        # Create show start announcements
+        # Create show start announcement message
         post_text = f"📻 Now Starting on Now Wave Radio:\n{show.title}"
         if show.presenter:
             post_text += f"\nWith {show.presenter}"
         if show.description:
             post_text += f"\n\n{show.description}"
         
-        # This method would typically integrate with the SocialMediaManager
-        # to post to various platforms
+        # PLACEHOLDER: Currently only logs the announcement
+        # Future implementation should call social media manager, e.g.:
+        # await self.social_media_manager.post_to_platforms(post_text, show.artwork)
         logging.info(f"Show starting: {show.title}")
         
     async def announce_show_end(self, show: ShowInfo):
@@ -101,12 +156,16 @@ class ShowHandler:
         
         Args:
             show: Show information
+            
+        TODO: Integrate with SocialMediaManager to actually post to social media
+        platforms when a show ends.
         """
-        # Create show end announcements
+        # Create show end announcement message
         post_text = f"📻 That's all for {show.title} on Now Wave Radio"
         if show.presenter:
             post_text += f" with {show.presenter}"
         
-        # This method would typically integrate with the SocialMediaManager
-        # to post to various platforms
+        # PLACEHOLDER: Currently only logs the announcement
+        # Future implementation should call social media manager, e.g.:
+        # await self.social_media_manager.post_to_platforms(post_text)
         logging.info(f"Show ending: {show.title}")

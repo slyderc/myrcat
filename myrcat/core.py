@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
@@ -19,7 +18,16 @@ from myrcat.managers.show import ShowHandler
 
 
 class Myrcat:
-    """Main application class for Myriad integration."""
+    """Main application class for Myriad integration.
+    
+    TODO: Potential improvements:
+    - Add health monitoring and status reporting
+    - Implement a web dashboard for real-time monitoring
+    - Add signal handling for cleaner shutdowns
+    - Support configuration hot-reloading through API
+    - Add more comprehensive metrics and logging
+    - Implement plugin system for extensibility
+    """
 
     def __init__(self, config_path: str):
         """Initialize the Myrcat application.
@@ -41,6 +49,15 @@ class Myrcat:
 
         logging.info(f"😺 Starting up!")
 
+        # Initialize all components using config
+        self._initialize_components()
+        
+    def _initialize_components(self):
+        """Initialize all components using current configuration.
+        
+        This method is used both during initialization and when configuration changes.
+        It ensures all components are properly configured according to the config file.
+        """
         # Load skip lists from files
         skip_artists_file = Path(self.config.get("publish_exceptions", "skip_artists_file"))
         skip_titles_file = Path(self.config.get("publish_exceptions", "skip_titles_file"))
@@ -62,41 +79,74 @@ class Myrcat:
         )
         self.artwork_hash_dir = Path(self.config.get("artwork_hash", "directory"))
 
+        # Log configuration
         if self.artwork_hash_enabled:
             logging.info(
                 f"🎨 Artwork hashing enabled - directory: {self.artwork_hash_dir}"
             )
-
         if self.skip_artists:
             logging.warning(f"⚠️ : Artists are being skipped")
         if self.skip_titles:
             logging.warning(f"⚠️ : Titles are being skipped")
-
-        # Initialize components
-        self.db = DatabaseManager(self.config.get("general", "database_path"))
-        self.playlist = PlaylistManager(
-            self.playlist_json, self.playlist_txt, self.artwork_publish
-        )
-        self.history = HistoryManager(
-            self.history_json, self.history_max_tracks
-        )
-        self.artwork = ArtworkManager(
-            self.artwork_incoming,
-            self.artwork_publish,
-            self.artwork_hash_dir if self.artwork_hash_enabled else None,
-        )
-        self.social = SocialMediaManager(self.config_parser, self.artwork, self.db)
-        self.show_handler = ShowHandler(self.config_parser)
-        
         logging.info(f"📋 Track history enabled - max tracks: {self.history_max_tracks}")
         
-        # Create server
-        self.server = MyriadServer(
-            host=self.config.get("server", "host"),
-            port=self.config.getint("server", "port"),
-            validator=self.validate_track_json,
-            processor=self.process_new_track
-        )
+        # Initialize or update components based on whether they already exist
+        if not hasattr(self, "db"):
+            # First-time initialization of core components
+            self.db = DatabaseManager(self.config.get("general", "database_path"))
+            self.playlist = PlaylistManager(
+                self.playlist_json, self.playlist_txt, self.artwork_publish
+            )
+            self.history = HistoryManager(
+                self.history_json, self.history_max_tracks
+            )
+            self.artwork = ArtworkManager(
+                self.artwork_incoming,
+                self.artwork_publish,
+                self.artwork_hash_dir if self.artwork_hash_enabled else None,
+            )
+            self.social = SocialMediaManager(self.config_parser, self.artwork, self.db)
+            self.show_handler = ShowHandler(self.config_parser)
+            
+            # Create server
+            self.server = MyriadServer(
+                host=self.config.get("server", "host"),
+                port=self.config.getint("server", "port"),
+                validator=self.validate_track_json,
+                processor=self.process_new_track
+            )
+        else:
+            # Update existing components
+            # Note: Some components like DatabaseManager can't be updated after creation
+            
+            # Update history max tracks setting
+            if hasattr(self, "history") and self.history.max_tracks != self.history_max_tracks:
+                self.history.max_tracks = self.history_max_tracks
+                logging.info(f"📋 Updated history max tracks: {self.history_max_tracks}")
+                
+            # Update social media manager and its components
+            if hasattr(self, "social"):
+                self.social.update_from_config()
+                logging.debug(f"🔄 Updated social media manager with new configuration")
+                
+            # Update show handler
+            if hasattr(self, "show_handler"):
+                self.show_handler.load_config()
+                logging.debug(f"🔄 Updated show handler with new configuration")
+
+    def _apply_config_changes(self):
+        """Apply configuration changes to all components.
+        
+        This method is called when the configuration file is reloaded.
+        It uses the consolidated _initialize_components method to ensure
+        all settings are updated consistently.
+        """
+        try:
+            # Use the same initialization method for updates to ensure consistency
+            self._initialize_components()
+            logging.info(f"✅ Applied configuration changes to all components")
+        except Exception as e:
+            logging.error(f"💥 Error applying configuration changes: {e}")
 
     def should_skip_track(self, title: str, artist: str) -> bool:
         """Check if track should be skipped based on artist or title.
@@ -295,6 +345,10 @@ class Myrcat:
                 try:
                     if self.config.reload_if_changed():
                         logging.info(f"✅ Configuration reloaded successfully")
+                        
+                        # Apply configuration changes
+                        self._apply_config_changes()
+                        logging.debug(f"🔄 Applied configuration changes to all components")
                 except Exception as e:
                     logging.error(f"💥 Error checking for config changes: {e}")
         except asyncio.CancelledError:

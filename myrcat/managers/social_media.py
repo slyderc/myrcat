@@ -5,7 +5,7 @@ import configparser
 import time
 import re
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Callable, Coroutine, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple
 
 import pylast
 import pylistenbrainz
@@ -42,6 +42,11 @@ class SocialMediaManager:
 
         # Track last post time for frequency limiting
         self.last_post_times = {}
+
+        # Get artist repost window setting (in minutes)
+        self.artist_repost_window = config.getint(
+            "social_analytics", "artist_repost_window", fallback=60
+        )
 
         # Check if social media publishing is enabled
         self.publish_enabled = self.config.getboolean(
@@ -311,12 +316,24 @@ class SocialMediaManager:
 
         Returns:
             True if post was successful, False otherwise
+            
+        TODO: Potential improvements:
+        - Refactor into smaller, more testable functions
+        - Better handle rate limiting and API failures
+        - Implement exponential backoff for retries
+        - Add support for post threads/replies
+        - Extract image handling to separate method
+        - Support alternative post formats (polls, links)
         """
         if not hasattr(self, "bluesky"):
             return False  # Service not initialized - excluded in config
 
         # Check posting frequency
         if not self._should_post_now("Bluesky"):
+            return False
+
+        # Check if the same artist was recently posted
+        if await self._is_artist_recently_posted("Bluesky", track.artist):
             return False
 
         if not self.bluesky_credentials_valid():
@@ -574,7 +591,7 @@ class SocialMediaManager:
                 image_info = "no image"
 
             logging.info(
-                f"🔵 Bluesky post created for {track.artist} - {track.title} using {source_log} with {image_info}"
+                f"🔵 Bluesky post created using {source_log} with {image_info}"
             )
 
             logging.debug(
@@ -591,9 +608,16 @@ class SocialMediaManager:
 
         Args:
             track: TrackInfo object containing track information
+
+        Returns:
+            True if post was successful, False otherwise
         """
         if not hasattr(self, "facebook"):
-            return  # Service not initialized - excluded in config
+            return False  # Service not initialized - excluded in config
+
+        # Check if the same artist was recently posted
+        if await self._is_artist_recently_posted("Facebook", track.artist):
+            return False
 
         try:
             message = f"Now Playing on Now Wave Radio:\n{track.artist} - {track.title}"
@@ -608,8 +632,16 @@ class SocialMediaManager:
                 parent_object=self.fb_page_id, connection_name="feed", message=message
             )
             logging.debug(f"📒 Updated Facebook")
+
+            # Track post success in analytics
+            if hasattr(self, "analytics"):
+                post_id = f"fb_{datetime.now().strftime('%Y%m%d%H%M%S')}"  # Generate a tracking ID
+                await self.analytics.record_post("Facebook", post_id, track, message)
+
+            return True
         except Exception as e:
             logging.error(f"💥 Facebook update error: {e}")
+            return False
 
     async def update_social_media(self, track: TrackInfo):
         """Update all configured social media platforms with track debug.
@@ -635,6 +667,42 @@ class SocialMediaManager:
                 except Exception as e:
                     logging.error(f"💥 Error updating {platform}: {e}")
 
+    def update_from_config(self):
+        """Update manager settings from current configuration.
+        
+        This method should be called whenever the configuration is reloaded.
+        """
+        # Update artist repost window setting
+        self.artist_repost_window = self.config.getint(
+            "social_analytics", "artist_repost_window", fallback=60
+        )
+        
+        # Update social media publishing settings
+        self.publish_enabled = self.config.getboolean(
+            "publish_exceptions", "publish_socials", fallback=True
+        )
+        
+        # Update disabled services
+        disabled_str = self.config.get(
+            "publish_exceptions", "disable_services", fallback=""
+        ).strip()
+        
+        if not disabled_str or disabled_str.lower() == "none":
+            self.disabled_services = []
+        else:
+            self.disabled_services = [
+                s.strip() for s in disabled_str.split(",") if s.strip()
+            ]
+        
+        # Update analytics settings
+        if hasattr(self, "analytics"):
+            self.analytics.load_config()
+            
+        # Update content generator settings
+        if hasattr(self, "content_generator"):
+            self.content_generator.load_config()
+            logging.debug(f"🔄 Updated content generator with new configuration")
+    
     async def check_post_engagement(self):
         """Check engagement metrics for recent posts and update analytics.
 
@@ -653,8 +721,63 @@ class SocialMediaManager:
 
             # Clean up old data
             await self.analytics.cleanup_old_data()
+            
+            # Generate analytics report after each check if enabled
+            if self.analytics.generate_reports:
+                # Get analytics data for the report
+                analytics_data = await self.get_social_analytics()
+                # Generate the report
+                await self.analytics.generate_text_report(analytics_data)
+                logging.debug(f"📊 Generated analytics report after engagement check")
         except Exception as e:
             logging.error(f"💥 Error checking post engagement: {e}")
+
+    async def _is_artist_recently_posted(self, platform: str, artist: str) -> bool:
+        """Check if the same artist has been posted within the configured time window.
+
+        Args:
+            platform: Social media platform to check
+            artist: Artist name to check
+
+        Returns:
+            True if artist was recently posted, False otherwise
+        """
+        if not hasattr(self, "artist_repost_window") or self.artist_repost_window <= 0:
+            # Feature is disabled, allow post
+            return False
+
+        try:
+            # Calculate cutoff time
+            cutoff_time = (
+                datetime.now() - timedelta(minutes=self.artist_repost_window)
+            ).isoformat()
+
+            with self.db_manager._get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM social_media_posts smp
+                    JOIN playouts p ON smp.track_id = p.id
+                    WHERE smp.platform = ?
+                    AND p.artist = ?
+                    AND smp.posted_at > ?
+                    AND smp.deleted = 0
+                    """,
+                    (platform, artist, cutoff_time),
+                )
+                result = cursor.fetchone()
+                count = result[0] if result else 0
+
+                if count > 0:
+                    logging.info(
+                        f"⏱️ Skipping {platform} post for artist '{artist}' (already posted within {self.artist_repost_window} minutes)"
+                    )
+                    return True
+
+                return False
+        except Exception as e:
+            logging.error(f"💥 Error checking recent artist posts: {e}")
+            # On error, allow the post to go through
+            return False
 
     async def _check_bluesky_engagement(self):
         """Check engagement metrics for recent Bluesky posts."""
@@ -668,7 +791,7 @@ class SocialMediaManager:
 
             with self.db_manager._get_connection() as conn:
                 cursor = conn.execute(
-                    "SELECT post_id FROM social_media_posts WHERE platform = ? AND posted_at > ?",
+                    "SELECT post_id FROM social_media_posts WHERE platform = ? AND posted_at > ? AND deleted = 0",
                     ("Bluesky", cutoff_date),
                 )
                 post_ids = [row[0] for row in cursor.fetchall()]
@@ -702,9 +825,15 @@ class SocialMediaManager:
                             },
                         )
                 except Exception as post_error:
-                    logging.warning(
-                        f"⚠️ Error checking Bluesky post {post_id}: {post_error}"
-                    )
+                    # Check if it's a 404 (Not Found) error
+                    error_str = str(post_error).lower()
+                    if "404" in error_str or "not found" in error_str or "no record" in error_str:
+                        logging.info(f"🗑️ Bluesky post {post_id} not found (likely deleted)")
+                        # Mark the post as deleted in the database
+                        await self.analytics.mark_post_as_deleted("Bluesky", post_id)
+                    else:
+                        # Log other errors normally
+                        logging.warning(f"⚠️ Error checking Bluesky post {post_id}: {post_error}")
         except Exception as e:
             logging.error(f"💥 Error checking Bluesky engagement: {e}")
 
