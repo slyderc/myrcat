@@ -44,13 +44,15 @@ Album: {album}
 Year: {year}
 Show: {program}
 Presenter: {presenter}
+Day: {dow}
 
 IMPORTANT RESTRICTIONS:
 - MUST be under 200 characters total (this is critical)
 - Feel conversational and include 1-2 emojis only
 - Mention "Now Wave Radio"
 - NEVER include hashtags - they will be added separately
-- Focus on being concise yet engaging"""
+- Focus on being concise yet engaging
+- You can reference today being {dow} in your post if appropriate"""
 
         try:
             with open(path, "w") as f:
@@ -308,6 +310,9 @@ Must be under 200 characters.""", "minimal_fallback")
             Formatted prompt
         """
         try:
+            # Get current day of the week
+            current_dow = time.strftime("%A")  # Full day name (e.g., "Monday")
+            
             # Create a dictionary with default values for all possible fields
             template_values = {
                 "title": track_info.get("title", "(Unknown Title)"),
@@ -316,6 +321,7 @@ Must be under 200 characters.""", "minimal_fallback")
                 "year": track_info.get("year", "(Unknown)"),
                 "program": track_info.get("program", "Now Wave Mix"),
                 "presenter": track_info.get("presenter", "(Unknown DJ)"),
+                "dow": current_dow,  # Add day of week support
             }
 
             # Format the prompt template

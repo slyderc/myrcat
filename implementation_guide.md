@@ -154,3 +154,28 @@ This setting defines how long (in minutes) to wait before allowing another post 
 - The artist's name is used for matching (exact match)
 - If a matching artist is found in recent posts (within the configured time window), the post is skipped
 - A log message is generated to indicate when a post is skipped due to this feature
+
+## New Feature: Day-of-Week Support in Prompt Templates
+
+Myrcat now supports including the current day of the week in prompt templates for AI-generated social media content. This enhances the personalization of posts by referencing the current day.
+
+### Usage
+
+In any prompt template file (located in `templates/prompts/`), you can include the placeholder `{dow}` which will be replaced with the current day of the week (e.g., "Monday", "Tuesday", etc.).
+
+For example, a template could contain:
+```
+Today is {dow} and we're playing "{title}" by {artist} on Now Wave Radio!
+```
+
+Which would be formatted as:
+```
+Today is Friday and we're playing "Blue Monday" by New Order on Now Wave Radio!
+```
+
+### Implementation Details
+
+- The day name is obtained using `time.strftime("%A")` which returns the full day name
+- The `{dow}` placeholder works alongside all existing placeholders (`{title}`, `{artist}`, etc.)
+- This feature works with all prompt selection mechanisms (show-specific, time-of-day, etc.)
+- When creating new prompt templates, consider how the day of week might enhance your content

@@ -244,14 +244,15 @@ Myrcat uses a sophisticated process to select and generate content for social me
 
 All prompt files support these template variables:
 
-| Variable      | Description        | Example             |
-| ------------- | ------------------ | ------------------- |
-| `{title}`     | Track title        | "Dreams"            |
-| `{artist}`    | Artist name        | "Fleetwood Mac"     |
-| `{album}`     | Album name         | "Rumours"           |
-| `{year}`      | Release year       | "1977"              |
-| `{program}`   | Radio program name | "Classic Rock Hour" |
-| `{presenter}` | DJ/Presenter name  | "DJ Smith"          |
+| Variable      | Description           | Example             |
+| ------------- | --------------------- | ------------------- |
+| `{title}`     | Track title           | "Dreams"            |
+| `{artist}`    | Artist name           | "Fleetwood Mac"     |
+| `{album}`     | Album name            | "Rumours"           |
+| `{year}`      | Release year          | "1977"              |
+| `{program}`   | Radio program name    | "Classic Rock Hour" |
+| `{presenter}` | DJ/Presenter name     | "DJ Smith"          |
+| `{dow}`       | Current day of week   | "Monday"            |
 
 #### Creating Custom Prompts
 
