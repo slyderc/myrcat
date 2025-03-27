@@ -19,6 +19,7 @@ class TrackInfo:
     starttime: str
     duration: int
     type: str
+    is_song: bool
     media_id: str
     program: Optional[str]
     presenter: Optional[str]

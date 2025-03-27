@@ -67,8 +67,8 @@ class HistoryManager:
             # Add image_hash if provided - this will be used by the embeds
             if artwork_hash:
                 track_entry["image_hash"] = artwork_hash
-                # Add the hashed artwork URL path that points to the ca directory
-                track_entry["hashed_artwork_url"] = f"/player/publish/ca/{artwork_hash}.jpg"
+                # Add the cached artwork URL path that points to the ca directory
+                track_entry["cached_artwork_url"] = f"/player/publish/ca/{artwork_hash}.jpg"
             
             # Check if this is the same as the most recent track (avoid duplicates)
             if (self.track_history and 

@@ -58,16 +58,14 @@ class Config:
     
     def _setup_defaults(self) -> None:
         """Set up default values for optional configuration."""
-        # Add default section for artwork hash if it doesn't exist
-        if not self.config_parser.has_section("artwork_hash"):
-            self.config_parser.add_section("artwork_hash")
-            self.config_parser.set("artwork_hash", "enabled", "true")
+        # Add default cache_directory to artwork section if it doesn't exist
+        if not self.config_parser.has_option("artwork", "cache_directory"):
             self.config_parser.set(
-                "artwork_hash",
-                "directory",
+                "artwork",
+                "cache_directory",
                 str(Path(self.config_parser["artwork"]["publish_directory"]).parent / "ca"),
             )
-            logging.info("🆕 Added default artwork hash configuration")
+            logging.info("🆕 Added default artwork cache configuration")
             
     def get(self, section: str, option: str, fallback: Optional[str] = None) -> str:
         """Get a string configuration value.

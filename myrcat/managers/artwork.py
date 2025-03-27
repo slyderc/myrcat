@@ -33,17 +33,17 @@ class ArtworkManager:
         Args:
             incoming_dir: Directory where incoming artwork files are stored
             publish_dir: Directory to publish artwork files
-            hashed_artwork_dir: Optional directory for hashed artwork files
+            hashed_artwork_dir: Directory for cached artwork files (using hash-based filenames)
         """
         self.incoming_dir = incoming_dir
         self.publish_dir = publish_dir
-        self.hashed_artwork_dir = hashed_artwork_dir
+        self.cached_artwork_dir = hashed_artwork_dir  # renamed but kept parameter name for backward compatibility
         self.current_image: Optional[str] = None
 
         # Create directories if they don't exist
         self.publish_dir.mkdir(parents=True, exist_ok=True)
-        if self.hashed_artwork_dir:
-            self.hashed_artwork_dir.mkdir(parents=True, exist_ok=True)
+        if self.cached_artwork_dir:
+            self.cached_artwork_dir.mkdir(parents=True, exist_ok=True)
 
     async def process_artwork(self, filename: str) -> Optional[str]:
         """Process artwork file with unique name and clean up old files.
@@ -87,7 +87,7 @@ class ArtworkManager:
     async def create_hashed_artwork(
         self, filename: str, artist: str, title: str
     ) -> Optional[str]:
-        """Create a hashed version of the artwork using artist and title.
+        """Create a cached version of the artwork using artist and title hash.
 
         Args:
             filename: The original artwork filename
@@ -97,7 +97,7 @@ class ArtworkManager:
         Returns:
             str: The hash used for the artwork file
         """
-        if not filename or not self.hashed_artwork_dir:
+        if not filename or not self.cached_artwork_dir:
             return None
 
         # Generate hash from artist and title
@@ -114,18 +114,18 @@ class ArtworkManager:
             return artwork_hash
 
         try:
-            # Create hashed artwork filename
-            hashed_filename = f"{artwork_hash}.jpg"
-            hashed_artwork_path = self.hashed_artwork_dir / hashed_filename
+            # Create cached artwork filename
+            cached_filename = f"{artwork_hash}.jpg"
+            cached_artwork_path = self.cached_artwork_dir / cached_filename
 
-            # Only copy if the hashed file doesn't already exist
-            if not hashed_artwork_path.exists():
-                shutil.copy2(str(original_artwork), str(hashed_artwork_path))
-                logging.debug(f"🎨 Created hashed artwork: {hashed_filename}")
+            # Only copy if the cached file doesn't already exist
+            if not cached_artwork_path.exists():
+                shutil.copy2(str(original_artwork), str(cached_artwork_path))
+                logging.debug(f"🎨 Created cached artwork: {cached_filename}")
 
             return artwork_hash
         except Exception as e:
-            logging.error(f"💥 Error creating hashed artwork: {e}")
+            logging.error(f"💥 Error creating cached artwork: {e}")
             return artwork_hash  # Still return the hash even if file operation fails
 
     async def wait_for_file(self, incoming_path: Path) -> bool:

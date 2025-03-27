@@ -151,7 +151,8 @@ def create_track_info(config: configparser.ConfigParser) -> TrackInfo:
         program=track_config.get("program", ""),
         presenter=track_config.get("presenter", ""),
         media_id="test123",
-        type="music",
+        type="Song",  # Default to Song type
+        is_song=True, # Set is_song flag to true for testprompt
         starttime="2023-01-01T08:30:00",
         duration=180,
         image=None,
