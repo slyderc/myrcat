@@ -27,7 +27,7 @@ After the post, create 3 hashtags appropriate for Bluesky based on the content. 
 **IMPORTANT RESTRICTIONS:
 - MUST be under 215 characters total (this is critical)
 - ALWAYS include the first hashtag "#NowWaveRadio"
-- Feel conversational and include 1 or 2 1980's themedemojis only
+- Feel conversational and include 1 or 2 1980's themed emojis only
 - Never place two emojis next to each other like: 🎤🔈
 - Focus on being concise yet engaging
 

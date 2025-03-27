@@ -186,7 +186,13 @@ class Myrcat:
                 presenter=track_json.get("presenter"),
             )
 
-            logging.info(f'"{track.title}" [{track.year}] - {track.artist}')
+            # Delay publishing to the website to accommodate stream delay
+            delay_seconds = self.config.getint("general", "publish_delay", fallback=0)
+            
+            if delay_seconds > 0:
+                logging.info(f'Queuing "{track.title}" [{track.year}] - {track.artist} in {delay_seconds} seconds')
+            else:
+                logging.info(f'"{track.title}" [{track.year}] - {track.artist}')
 
             # Check for duplicate track, in case we're messing with Myriad OCP
             if (
@@ -196,9 +202,6 @@ class Myrcat:
             ):
                 logging.info(f"⛔️ Skipping - duplicate track!")
                 return
-
-            # Delay publishing to the website to accommodate stream delay
-            delay_seconds = self.config.getint("general", "publish_delay", fallback=0)
 
             if delay_seconds > 0:
                 # Make sure we don't delay longer than track duration
