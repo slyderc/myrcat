@@ -280,22 +280,28 @@ class SocialMediaAnalytics:
             return False
             
     async def get_top_tracks(self, days: int = 30, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get top tracks by social media engagement.
+        """Get top tracks by social media engagement with previous period comparison.
         
         Args:
             days: Number of days to look back
             limit: Maximum number of tracks to return
             
         Returns:
-            List of track dictionaries with engagement data
+            List of track dictionaries with engagement data and change metrics
         """
         if not self.enabled:
             return []
             
         try:
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+            now = datetime.now()
+            cutoff_date = (now - timedelta(days=days)).isoformat()
+            
+            # For comparison, get previous period
+            previous_cutoff_end = cutoff_date  # Current period starts where previous ends
+            previous_cutoff_start = (now - timedelta(days=days*2)).isoformat()
             
             with self.db._get_connection() as conn:
+                # Get current period top tracks
                 cursor = conn.execute(
                     """
                     SELECT 
@@ -315,7 +321,78 @@ class SocialMediaAnalytics:
                     """,
                     (cutoff_date, limit)
                 )
-                return [dict(row) for row in cursor.fetchall()]
+                current_tracks = [dict(row) for row in cursor.fetchall()]
+                
+                # Create a lookup dictionary for previous period data
+                previous_data = {}
+                cursor = conn.execute(
+                    """
+                    SELECT 
+                        p.artist, p.title,
+                        SUM(sme.likes) as total_likes,
+                        SUM(sme.shares) as total_shares,
+                        SUM(sme.comments) as total_comments
+                    FROM playouts p
+                    JOIN social_media_posts smp ON p.id = smp.track_id
+                    JOIN social_media_engagement sme ON smp.id = sme.post_id
+                    WHERE smp.posted_at > ? 
+                    AND smp.posted_at <= ?
+                    AND smp.deleted = 0
+                    GROUP BY p.artist, p.title
+                    """,
+                    (previous_cutoff_start, previous_cutoff_end)
+                )
+                for row in cursor.fetchall():
+                    key = f"{row['artist']}||{row['title']}"
+                    previous_data[key] = {
+                        'likes': row['total_likes'] if row['total_likes'] else 0,
+                        'shares': row['total_shares'] if row['total_shares'] else 0,
+                        'comments': row['total_comments'] if row['total_comments'] else 0
+                    }
+                
+                # Add previous period data and calculate changes
+                for track in current_tracks:
+                    key = f"{track['artist']}||{track['title']}"
+                    
+                    # Set defaults 
+                    track['prev_likes'] = 0
+                    track['prev_shares'] = 0
+                    track['prev_comments'] = 0
+                    track['likes_change'] = 0
+                    track['shares_change'] = 0 
+                    track['comments_change'] = 0
+                    track['likes_change_pct'] = 0
+                    track['engagement_trend'] = 'new'  # Default to 'new' if no previous data
+                    
+                    # If we have previous data for this track
+                    if key in previous_data:
+                        prev = previous_data[key]
+                        track['prev_likes'] = prev['likes']
+                        track['prev_shares'] = prev['shares']
+                        track['prev_comments'] = prev['comments']
+                        
+                        # Calculate changes
+                        track['likes_change'] = track['total_likes'] - prev['likes']
+                        track['shares_change'] = track['total_shares'] - prev['shares']
+                        track['comments_change'] = track['total_comments'] - prev['comments']
+                        
+                        # Calculate percentage changes
+                        if prev['likes'] > 0:
+                            track['likes_change_pct'] = round((track['likes_change'] / prev['likes']) * 100, 1)
+                        
+                        # Determine trend
+                        current_engagement = track['total_likes'] + track['total_shares']*2 + track['total_comments']*3
+                        previous_engagement = prev['likes'] + prev['shares']*2 + prev['comments']*3
+                        
+                        if current_engagement > previous_engagement:
+                            track['engagement_trend'] = 'up'
+                        elif current_engagement < previous_engagement:
+                            track['engagement_trend'] = 'down'
+                        else:
+                            track['engagement_trend'] = 'flat'
+                
+                return current_tracks
+                
         except Exception as e:
             logging.error(f"💥 Error getting top tracks: {e}")
             return []
@@ -368,16 +445,21 @@ class SocialMediaAnalytics:
             days: Number of days to look back
             
         Returns:
-            Dictionary of platform statistics
+            Dictionary of platform statistics including historical comparison
         """
         if not self.enabled:
             return {}
             
         try:
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+            now = datetime.now()
+            cutoff_date = (now - timedelta(days=days)).isoformat()
+            
+            # For comparison, get previous period stats
+            previous_cutoff_end = cutoff_date  # Current period starts where previous ends
+            previous_cutoff_start = (now - timedelta(days=days*2)).isoformat()
             
             with self.db._get_connection() as conn:
-                # Get total posts
+                # Get total posts for current period
                 cursor = conn.execute(
                     """
                     SELECT COUNT(*) as post_count
@@ -389,7 +471,22 @@ class SocialMediaAnalytics:
                 result = cursor.fetchone()
                 post_count = result[0] if result else 0
                 
-                # Get engagement metrics
+                # Get total posts for previous period
+                cursor = conn.execute(
+                    """
+                    SELECT COUNT(*) as post_count
+                    FROM social_media_posts
+                    WHERE platform = ? 
+                    AND posted_at > ? 
+                    AND posted_at <= ? 
+                    AND deleted = 0
+                    """,
+                    (platform, previous_cutoff_start, previous_cutoff_end)
+                )
+                result = cursor.fetchone()
+                previous_post_count = result[0] if result else 0
+                
+                # Get engagement metrics for current period
                 cursor = conn.execute(
                     """
                     SELECT 
@@ -405,18 +502,91 @@ class SocialMediaAnalytics:
                     """,
                     (platform, cutoff_date)
                 )
-                result = cursor.fetchone()
+                current = cursor.fetchone()
+                
+                # Get engagement metrics for previous period
+                cursor = conn.execute(
+                    """
+                    SELECT 
+                        SUM(sme.likes) as total_likes,
+                        SUM(sme.shares) as total_shares,
+                        SUM(sme.comments) as total_comments,
+                        AVG(sme.likes) as avg_likes,
+                        AVG(sme.shares) as avg_shares,
+                        AVG(sme.comments) as avg_comments
+                    FROM social_media_posts smp
+                    JOIN social_media_engagement sme ON smp.id = sme.post_id
+                    WHERE smp.platform = ? 
+                    AND smp.posted_at > ? 
+                    AND smp.posted_at <= ? 
+                    AND smp.deleted = 0
+                    """,
+                    (platform, previous_cutoff_start, previous_cutoff_end)
+                )
+                previous = cursor.fetchone()
+                
+                # Get engagement growth over time (last 5 data points)
+                cursor = conn.execute(
+                    """
+                    SELECT 
+                        DATE(sme.checked_at) as check_date,
+                        SUM(sme.likes) as total_likes
+                    FROM social_media_posts smp
+                    JOIN social_media_engagement sme ON smp.id = sme.post_id
+                    WHERE smp.platform = ? AND smp.posted_at > ? AND smp.deleted = 0
+                    GROUP BY DATE(sme.checked_at)
+                    ORDER BY check_date DESC
+                    LIMIT 5
+                    """,
+                    (platform, previous_cutoff_start)
+                )
+                trend_data = cursor.fetchall()
+                trend_dates = [row[0] for row in trend_data]
+                trend_likes = [row[1] if row[1] else 0 for row in trend_data]
+                
+                # Create comparison metrics
+                current_likes = current[0] if current and current[0] else 0
+                previous_likes = previous[0] if previous and previous[0] else 0
+                likes_change = current_likes - previous_likes
+                likes_change_pct = (likes_change / previous_likes * 100) if previous_likes > 0 else 0
+                
+                current_shares = current[1] if current and current[1] else 0
+                previous_shares = previous[1] if previous and previous[1] else 0
+                shares_change = current_shares - previous_shares
+                shares_change_pct = (shares_change / previous_shares * 100) if previous_shares > 0 else 0
+                
+                current_comments = current[2] if current and current[2] else 0
+                previous_comments = previous[2] if previous and previous[2] else 0
+                comments_change = current_comments - previous_comments
+                comments_change_pct = (comments_change / previous_comments * 100) if previous_comments > 0 else 0
+                
+                post_change = post_count - previous_post_count
+                post_change_pct = (post_change / previous_post_count * 100) if previous_post_count > 0 else 0
                 
                 return {
                     "platform": platform,
                     "days": days,
                     "post_count": post_count,
-                    "total_likes": result[0] if result and result[0] else 0,
-                    "total_shares": result[1] if result and result[1] else 0,
-                    "total_comments": result[2] if result and result[2] else 0,
-                    "avg_likes": round(result[3], 2) if result and result[3] else 0,
-                    "avg_shares": round(result[4], 2) if result and result[4] else 0,
-                    "avg_comments": round(result[5], 2) if result and result[5] else 0
+                    "previous_post_count": previous_post_count,
+                    "post_change": post_change,
+                    "post_change_pct": round(post_change_pct, 1),
+                    "total_likes": current_likes,
+                    "previous_likes": previous_likes,
+                    "likes_change": likes_change,
+                    "likes_change_pct": round(likes_change_pct, 1),
+                    "total_shares": current_shares,
+                    "previous_shares": previous_shares,
+                    "shares_change": shares_change, 
+                    "shares_change_pct": round(shares_change_pct, 1),
+                    "total_comments": current_comments,
+                    "previous_comments": previous_comments,
+                    "comments_change": comments_change,
+                    "comments_change_pct": round(comments_change_pct, 1),
+                    "avg_likes": round(current[3], 2) if current and current[3] else 0,
+                    "avg_shares": round(current[4], 2) if current and current[4] else 0,
+                    "avg_comments": round(current[5], 2) if current and current[5] else 0,
+                    "trend_dates": trend_dates,
+                    "trend_likes": trend_likes
                 }
         except Exception as e:
             logging.error(f"💥 Error getting platform stats: {e}")
@@ -426,28 +596,27 @@ class SocialMediaAnalytics:
                 "error": str(e)
             }
             
-    def _format_change_indicator(self, current: int, key: str) -> str:
-        """Format a change indicator (↑/↓/-) with value.
+    def _format_change_indicator(self, change: int, change_pct: float = None) -> str:
+        """Format a change indicator (↑/↓/-) with value and optional percentage.
         
         Args:
-            current: Current value
-            key: Dictionary key to compare with previous value
+            change: The change value
+            change_pct: Optional percentage change
             
         Returns:
             Formatted change indicator string
         """
-        if key not in self.previous_analytics:
+        if change == 0:
             return "-"
             
-        previous = self.previous_analytics[key]
-        change = current - previous
-        
         if change > 0:
+            if change_pct is not None:
+                return f"↑{change} (+{change_pct:.1f}%)"
             return f"↑{change}"
-        elif change < 0:
-            return f"↓{abs(change)}"
         else:
-            return "-"
+            if change_pct is not None:
+                return f"↓{abs(change)} ({change_pct:.1f}%)"
+            return f"↓{abs(change)}"
             
     async def generate_text_report(self, analytics_data: Dict[str, Any]) -> None:
         """Generate a text-based analytics report.
@@ -486,7 +655,8 @@ class SocialMediaAnalytics:
                     f.write("Analytics are currently disabled.\n")
                     return
                     
-                f.write(f"Report covering the last {analytics_data.get('days', 30)} days\n\n")
+                report_days = analytics_data.get('days', 30)
+                f.write(f"Report covering the last {report_days} days compared to previous {report_days} days\n\n")
                 
                 # Platform statistics
                 f.write("PLATFORM STATISTICS\n")
@@ -496,26 +666,35 @@ class SocialMediaAnalytics:
                 for platform_name, stats in platforms.items():
                     f.write(f"\n{platform_name}\n")
                     
+                    # Posts
                     post_count = stats.get("post_count", 0)
-                    post_key = f"{platform_name}_post_count"
-                    post_indicator = self._format_change_indicator(post_count, post_key)
-                    f.write(f"  Posts:           {post_count:4d} {post_indicator:>6}\n")
+                    post_change = stats.get("post_change", 0)
+                    post_change_pct = stats.get("post_change_pct", 0.0)
+                    post_indicator = self._format_change_indicator(post_change, post_change_pct)
+                    f.write(f"  Posts:           {post_count:4d} {post_indicator}\n")
                     
+                    # Likes
                     likes = stats.get("total_likes", 0)
-                    likes_key = f"{platform_name}_total_likes"
-                    likes_indicator = self._format_change_indicator(likes, likes_key)
-                    f.write(f"  Total Likes:     {likes:4d} {likes_indicator:>6}\n")
+                    likes_change = stats.get("likes_change", 0)
+                    likes_change_pct = stats.get("likes_change_pct", 0.0)
+                    likes_indicator = self._format_change_indicator(likes_change, likes_change_pct)
+                    f.write(f"  Total Likes:     {likes:4d} {likes_indicator}\n")
                     
+                    # Shares 
                     shares = stats.get("total_shares", 0)
-                    shares_key = f"{platform_name}_total_shares"
-                    shares_indicator = self._format_change_indicator(shares, shares_key)
-                    f.write(f"  Total Shares:    {shares:4d} {shares_indicator:>6}\n")
+                    shares_change = stats.get("shares_change", 0) 
+                    shares_change_pct = stats.get("shares_change_pct", 0.0)
+                    shares_indicator = self._format_change_indicator(shares_change, shares_change_pct)
+                    f.write(f"  Total Shares:    {shares:4d} {shares_indicator}\n")
                     
+                    # Comments
                     comments = stats.get("total_comments", 0)
-                    comments_key = f"{platform_name}_total_comments"
-                    comments_indicator = self._format_change_indicator(comments, comments_key)
-                    f.write(f"  Total Comments:  {comments:4d} {comments_indicator:>6}\n")
+                    comments_change = stats.get("comments_change", 0)
+                    comments_change_pct = stats.get("comments_change_pct", 0.0)
+                    comments_indicator = self._format_change_indicator(comments_change, comments_change_pct)
+                    f.write(f"  Total Comments:  {comments:4d} {comments_indicator}\n")
                     
+                    # Average engagement
                     avg_likes = stats.get("avg_likes", 0)
                     f.write(f"  Avg. Likes:      {avg_likes:.2f}\n")
                     
@@ -525,6 +704,21 @@ class SocialMediaAnalytics:
                     avg_comments = stats.get("avg_comments", 0)
                     f.write(f"  Avg. Comments:   {avg_comments:.2f}\n")
                     
+                    # Display trend data if available
+                    trend_dates = stats.get("trend_dates", [])
+                    trend_likes = stats.get("trend_likes", [])
+                    
+                    if trend_dates and trend_likes and len(trend_dates) == len(trend_likes):
+                        f.write("\n  Likes Trend (past days):\n")
+                        for i in range(min(len(trend_dates), 5)):
+                            date_str = trend_dates[i]
+                            # Convert date string to more readable format
+                            try:
+                                date_obj = datetime.strptime(date_str, "%Y-%m-%d").strftime("%b %d")
+                            except:
+                                date_obj = date_str
+                            f.write(f"    {date_obj}: {trend_likes[i]}\n")
+                
                 # Top tracks
                 f.write("\n\nTOP TRACKS BY ENGAGEMENT\n")
                 f.write("----------------------\n")
@@ -533,9 +727,9 @@ class SocialMediaAnalytics:
                 if not top_tracks:
                     f.write("No track data available for this period.\n")
                 else:
-                    # Column headers
-                    f.write(f"{'Track':42s} {'Artist':30s} {'Posts':5s} {'Likes':7s} {'Shares':7s} {'Comments':9s}\n")
-                    f.write(f"{'-'*42} {'-'*30} {'-'*5} {'-'*7} {'-'*7} {'-'*9}\n")
+                    # Column headers with indicators for trend analysis
+                    f.write(f"{'Track':42s} {'Artist':30s} {'Posts':5s} {'Likes':5s} {'Change':18s} {'Trend':6s}\n")
+                    f.write(f"{'-'*42} {'-'*30} {'-'*5} {'-'*5} {'-'*18} {'-'*6}\n")
                     
                     # Track data
                     for track in top_tracks:
@@ -543,27 +737,28 @@ class SocialMediaAnalytics:
                         artist = track.get("artist", "Unknown")[:28]
                         post_count = track.get("post_count", 0)
                         likes = track.get("total_likes", 0)
-                        shares = track.get("total_shares", 0)
-                        comments = track.get("total_comments", 0)
                         
-                        # Prepare track key for change indicators
-                        track_key = f"track_{artist}_{title}"
+                        # Get trend indicators
+                        likes_change = track.get("likes_change", 0)
+                        likes_change_pct = track.get("likes_change_pct", 0)
                         
-                        # Get change indicators
-                        likes_key = f"{track_key}_likes"
-                        likes_indicator = self._format_change_indicator(likes, likes_key)
+                        # Format the change indicator
+                        change_indicator = self._format_change_indicator(likes_change, likes_change_pct)
                         
-                        shares_key = f"{track_key}_shares"
-                        shares_indicator = self._format_change_indicator(shares, shares_key)
-                        
-                        comments_key = f"{track_key}_comments"
-                        comments_indicator = self._format_change_indicator(comments, comments_key)
-                        
-                        f.write(f"{title:42s} {artist:30s} {post_count:5d} {likes:5d} {likes_indicator:>5} "
-                               f"{shares:5d} {shares_indicator:>5} {comments:5d} {comments_indicator:>5}\n")
-                
-                # Update previous analytics for change tracking
-                self._update_previous_analytics(analytics_data)
+                        # Format the engagement trend indicator
+                        trend = track.get("engagement_trend", "")
+                        if trend == "up":
+                            trend_indicator = "↑"
+                        elif trend == "down":
+                            trend_indicator = "↓"  
+                        elif trend == "flat":
+                            trend_indicator = "→"
+                        elif trend == "new":
+                            trend_indicator = "NEW"
+                        else:
+                            trend_indicator = ""
+                            
+                        f.write(f"{title:42s} {artist:30s} {post_count:5d} {likes:5d} {change_indicator:18s} {trend_indicator:6s}\n")
                 
             # Update last report time
             self.last_report_time = now
@@ -571,28 +766,7 @@ class SocialMediaAnalytics:
             
         except Exception as e:
             logging.error(f"💥 Error generating analytics report: {e}")
-            
-    def _update_previous_analytics(self, analytics_data: Dict[str, Any]) -> None:
-        """Update previous analytics values for change tracking.
-        
-        Args:
-            analytics_data: Current analytics data
-        """
-        # Track platform stats
-        platforms = analytics_data.get("platforms", {})
-        for platform_name, stats in platforms.items():
-            self.previous_analytics[f"{platform_name}_post_count"] = stats.get("post_count", 0)
-            self.previous_analytics[f"{platform_name}_total_likes"] = stats.get("total_likes", 0)
-            self.previous_analytics[f"{platform_name}_total_shares"] = stats.get("total_shares", 0)
-            self.previous_analytics[f"{platform_name}_total_comments"] = stats.get("total_comments", 0)
-            
-        # Track top track stats
-        top_tracks = analytics_data.get("top_tracks", [])
-        for track in top_tracks:
-            title = track.get("title", "Unknown")[:40]
-            artist = track.get("artist", "Unknown")[:28]
-            track_key = f"track_{artist}_{title}"
-            
-            self.previous_analytics[f"{track_key}_likes"] = track.get("total_likes", 0)
-            self.previous_analytics[f"{track_key}_shares"] = track.get("total_shares", 0)
-            self.previous_analytics[f"{track_key}_comments"] = track.get("total_comments", 0)
+            logging.error(f"💥 Error details: {str(e)}")
+            if hasattr(e, '__traceback__'):
+                import traceback
+                logging.error(f"💥 Traceback: {traceback.format_tb(e.__traceback__)}")
