@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
@@ -81,17 +82,21 @@ class Myrcat:
             "web", "history_max_tracks", fallback=30
         )
         self.artwork_cache_dir = Path(self.config.get("artwork", "cache_directory"))
-        
+
         # Get default artwork path
         default_artwork = self.config.get("artwork", "default_artwork", fallback=None)
         self.default_artwork_path = Path(default_artwork) if default_artwork else None
-        
+
         # Check if default artwork exists and log appropriate message
         if self.default_artwork_path:
             if self.default_artwork_path.exists():
-                logging.info(f"🎨 Default artwork configured: {self.default_artwork_path}")
+                logging.info(
+                    f"🎨 Default artwork configured: {self.default_artwork_path}"
+                )
             else:
-                logging.warning(f"⚠️ Default artwork file not found: {self.default_artwork_path}")
+                logging.warning(
+                    f"⚠️ Default artwork file not found: {self.default_artwork_path}"
+                )
         else:
             logging.debug("ℹ️ No default artwork configured")
 
@@ -161,22 +166,27 @@ class Myrcat:
         try:
             # Store old default artwork path for comparison
             old_default_artwork = self.default_artwork_path
-            
+
             # Use the same initialization method for updates to ensure consistency
             self._initialize_components()
-            
+
             # Check if default artwork path has changed and update ArtworkManager
-            if hasattr(self, "artwork") and old_default_artwork != self.default_artwork_path:
+            if (
+                hasattr(self, "artwork")
+                and old_default_artwork != self.default_artwork_path
+            ):
                 # Update the artwork manager with the new default_artwork_path
                 self.artwork.default_artwork_path = self.default_artwork_path
                 if self.default_artwork_path:
-                    log_msg = (f"🎨 Updated default artwork: {self.default_artwork_path}" 
-                              if self.default_artwork_path.exists() 
-                              else f"⚠️ Updated default artwork path, but file not found: {self.default_artwork_path}")
+                    log_msg = (
+                        f"🎨 Updated default artwork: {self.default_artwork_path}"
+                        if self.default_artwork_path.exists()
+                        else f"⚠️ Updated default artwork path, but file not found: {self.default_artwork_path}"
+                    )
                     logging.info(log_msg)
                 else:
                     logging.info("🎨 Default artwork configuration removed")
-            
+
             logging.info(f"✅ Applied configuration changes to all components")
         except Exception as e:
             logging.error(f"💥 Error applying configuration changes: {e}")
@@ -205,34 +215,55 @@ class Myrcat:
             # Normalize type to lowercase and determine if it's a song
             media_type = track_json["type"].lower()
             is_song = media_type == "song"
-            
+
+            # For non-song types, always use default artwork and handle missing artist
+            if not is_song:
+                # Use default artwork for non-song media types
+                new_artwork = None
+
+                # Use default artwork if available
+                if self.default_artwork_path and self.default_artwork_path.exists():
+                    # Get a new filename for the default artwork now, so we can set it in TrackInfo
+                    new_artwork = await self.artwork.use_default_artwork()
+                    if new_artwork:
+                        logging.debug(
+                            f"🎨 Using default artwork for non-song type: {track_json['type']}"
+                        )
+                        # Update the image in the JSON to use our default artwork
+                        track_json["image"] = new_artwork
+
             # Create TrackInfo object
             track = TrackInfo(
-                artist=track_json.get("artist"),
+                # For non-songs, provide empty string if artist is missing
+                artist=(
+                    track_json.get("artist")
+                    if is_song or track_json.get("artist")
+                    else ""
+                ),
                 title=clean_title(track_json["title"]),
-                album=track_json.get("album"),
+                album=track_json.get("album", ""),
                 year=int(track_json.get("year", 0)) if track_json.get("year") else None,
-                publisher=track_json.get("publisher"),
-                isrc=track_json.get("ISRC"),
+                publisher=track_json.get("publisher", ""),
+                isrc=track_json.get("ISRC", ""),
                 image=track_json.get("image"),
                 starttime=track_json["starttime"],
                 duration=duration,
                 type=track_json["type"],  # Keep original case for display purposes
-                is_song=is_song,          # Add normalized boolean flag
+                is_song=is_song,  # Add normalized boolean flag
                 media_id=track_json["media_id"],
-                program=track_json.get("program"),
-                presenter=track_json.get("presenter"),
+                program=track_json.get("program", ""),
+                presenter=track_json.get("presenter", ""),
             )
 
             # Delay publishing to the website to accommodate stream delay
             delay_seconds = self.config.getint("general", "publish_delay", fallback=0)
-            
+
             if delay_seconds > 0:
                 # Calculate the future timestamp when the track will be published
                 now = datetime.now()
                 future_time = now + timedelta(seconds=delay_seconds)
                 future_timestamp = future_time.strftime("%H:%M:%S")
-                
+
                 logging.info(
                     f'"{track.title}" [{track.year}] - {track.artist}; queued for {future_timestamp}'
                 )
@@ -270,7 +301,9 @@ class Myrcat:
                 # Regular song processing
                 if track.image:
                     new_filename = await self.artwork.process_artwork(track.image)
-                    track.image = new_filename  # Update track object with the new filename
+                    track.image = (
+                        new_filename  # Update track object with the new filename
+                    )
 
                     # Generate hash for the artwork
                     if track.artist and track.title:
@@ -281,7 +314,9 @@ class Myrcat:
                 # Always generate a hash even if there's no image (for songs only)
                 elif track.artist and track.title:
                     artwork_hash = self.artwork.generate_hash(track.artist, track.title)
-                    logging.debug(f"🔑 Generated artwork hash (no image): {artwork_hash}")
+                    logging.debug(
+                        f"🔑 Generated artwork hash (no image): {artwork_hash}"
+                    )
 
                 # Update playlist file on web server with the artwork hash
                 await self.playlist.update_track(track, artwork_hash)
@@ -306,28 +341,39 @@ class Myrcat:
             else:
                 # Non-song media type processing
                 logging.info(f"⚙️ Processing non-song media type: {track.type}")
-                
-                # Use default artwork if available
-                if self.default_artwork_path and self.default_artwork_path.exists():
-                    new_filename = await self.artwork.use_default_artwork()
+
+                # We already set up the default artwork earlier, but process the image if one was provided
+                if track.image and not track.image.startswith(str(uuid.UUID)):
+                    # This is a new image that wasn't set by us earlier
+                    new_filename = await self.artwork.process_artwork(track.image)
                     if new_filename:
-                        track.image = new_filename  # Update track object with the default artwork
-                        logging.debug(f"🎨 Using default artwork for {track.type}: {new_filename}")
-                
+                        track.image = (
+                            new_filename  # Update track object with the processed image
+                        )
+                        logging.debug(
+                            f"🎨 Processed provided image for {track.type}: {new_filename}"
+                        )
+
                 # Only update the playlist files, don't create artwork hash
                 await self.playlist.update_track(track, None)
-                
+
                 # Don't update history
-                logging.debug(f"📋 Skipping history update for non-song media type: {track.type}")
-                
+                logging.debug(
+                    f"📋 Skipping history update for non-song media type: {track.type}"
+                )
+
                 # Check for show transition (still do this for all media types)
                 await self.show_handler.check_show_transition(track)
-                
+
                 # Skip social media posting
-                logging.info(f"⛔️ Skipping socials for non-song media type: {track.type}")
-                
+                logging.info(
+                    f"⛔️ Skipping socials for non-song media type: {track.type}"
+                )
+
                 # Skip database logging
-                logging.debug(f"💾 Skipping database logging for non-song media type: {track.type}")
+                logging.debug(
+                    f"💾 Skipping database logging for non-song media type: {track.type}"
+                )
 
             self.last_processed_track = track
 
@@ -347,14 +393,28 @@ class Myrcat:
         if not track_json:
             return False, "No JSON track data received!"
 
-        required_keys = {"artist", "title", "starttime", "duration", "media_id"}
-        if missing := required_keys - track_json.keys():
+        # First check if required keys exist (but don't validate content yet)
+        basic_required_keys = {"title", "starttime", "duration", "media_id", "type"}
+        if missing := basic_required_keys - track_json.keys():
             return False, f"Missing required fields: {', '.join(missing)}"
 
-        required_fields = ["artist", "title"]
-        for field in required_fields:
-            if not track_json.get(field):
-                return False, f"Missing {field}!  Skipping."
+        # Check if this is a song type
+        media_type = track_json.get("type", "").lower()
+        is_song = media_type == "song"
+
+        # For songs, validate artist name
+        if is_song:
+            # Song requires artist field to exist in JSON
+            if "artist" not in track_json:
+                return False, "Missing required field: artist"
+
+            # Song requires artist field to have content
+            if not track_json.get("artist"):
+                return False, "Missing artist! Skipping."
+
+        # All tracks require title to have content
+        if not track_json.get("title"):
+            return False, "Missing title! Skipping."
 
         # Numeric validations
         try:
