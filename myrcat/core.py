@@ -239,6 +239,7 @@ class Myrcat:
                     if new_artwork:
                         logging.debug(f"🎨 Using default artwork due to {reason}")
                         track_json["image"] = new_artwork
+                        using_default_artwork = True
 
             # Safely get values with defaults appropriate for complete/incomplete tracks
             artist = track_json.get("artist", "") if is_song else (track_json.get("artist") or "")
@@ -270,6 +271,22 @@ class Myrcat:
 
             # Delay publishing to the website to accommodate stream delay
             delay_seconds = self.config.getint("general", "publish_delay", fallback=0)
+            
+            # Flag to track if we're using default artwork (set later in the code)
+            using_default_artwork = False
+            
+            # Check if this is a track that will use default artwork
+            if not is_complete and self.default_artwork_path and self.default_artwork_path.exists():
+                # Reduce delay for tracks with default artwork
+                original_delay = delay_seconds
+                
+                # Halve the delay, but ensure it's at least 5 seconds
+                if delay_seconds > 0:
+                    delay_seconds = max(5, delay_seconds // 2)
+                    using_default_artwork = True
+                    logging.debug(
+                        f"⏱️ Reducing publish delay from {original_delay}s to {delay_seconds}s for default artwork"
+                    )
 
             if delay_seconds > 0:
                 # Calculate the future timestamp when the track will be published
@@ -303,6 +320,7 @@ class Myrcat:
                     )  # Leave at least 5s before next track
                 logging.debug(
                     f"⏱️ Delaying track processing for {delay_seconds} seconds"
+                    + (" (reduced for default artwork)" if using_default_artwork else "")
                 )
                 await asyncio.sleep(delay_seconds)
 

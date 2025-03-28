@@ -40,7 +40,7 @@ class SocialMediaManager:
         self.artwork_manager = artwork_manager
         self.db_manager = db_manager
 
-        # Track last post time for frequency limiting
+        # Keep in-memory tracking as a fallback for database errors
         self.last_post_times = {}
 
         # Get artist repost window setting (in minutes)
@@ -231,6 +231,8 @@ class SocialMediaManager:
 
     def _should_post_now(self, platform: str) -> bool:
         """Check if enough time has passed since the last post on this platform.
+        Uses database to get last post time to ensure persistence across restarts,
+        with fallback to in-memory tracking if database lookup fails.
 
         Args:
             platform: Social media platform name
@@ -255,18 +257,39 @@ class SocialMediaManager:
         if platform == "Bluesky" and hasattr(self, "bluesky_post_frequency"):
             frequency_hours = self.bluesky_post_frequency
 
-        # Calculate time since last post
-        if platform in self.last_post_times:
+        # First try to get last post time from database (persistent across restarts)
+        last_post_time = self.db_manager.get_last_post_time(platform)
+        
+        # If database lookup succeeds, use that time
+        if last_post_time:
+            hours_since_last = (datetime.now() - last_post_time).total_seconds() / 3600
+            if hours_since_last < frequency_hours:
+                logging.debug(
+                    f"⏱️ Skipping {platform} post (from DB: posted {hours_since_last:.1f}h ago, limit is {frequency_hours}h)"
+                )
+                return False
+            else:
+                logging.debug(
+                    f"✅ Will post to {platform} (from DB: last post was {hours_since_last:.1f}h ago, limit is {frequency_hours}h)"
+                )
+        # If database lookup fails, fall back to in-memory tracking
+        elif platform in self.last_post_times:
             hours_since_last = (
                 datetime.now() - self.last_post_times[platform]
             ).total_seconds() / 3600
             if hours_since_last < frequency_hours:
                 logging.debug(
-                    f"⏱️ Skipping {platform} post (posted {hours_since_last:.1f}h ago, limit is {frequency_hours}h)"
+                    f"⏱️ Skipping {platform} post (from memory: posted {hours_since_last:.1f}h ago, limit is {frequency_hours}h)"
                 )
                 return False
-
-        # Update last post time and allow posting
+            else:
+                logging.debug(
+                    f"✅ Will post to {platform} (from memory: last post was {hours_since_last:.1f}h ago, limit is {frequency_hours}h)"
+                )
+        else:
+            logging.debug(f"📝 No previous posts found for {platform} in DB or memory, will post now")
+            
+        # Update in-memory tracking when we decide to post
         self.last_post_times[platform] = datetime.now()
         return True
 
