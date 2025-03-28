@@ -215,16 +215,13 @@ class Myrcat:
             # Normalize type to lowercase and determine if it's a song
             media_type = track_json["type"].lower()
             is_song = media_type == "song"
-
-            # Use default artwork for: 1) non-song types, 2) missing artist, or 3) missing title
-            should_use_default = (
-                not is_song
-                or not track_json.get("artist")
-                or not track_json.get("title")
-            )
             
-            if should_use_default:
-                # Log the reason for using default artwork
+            # Determine if this is a complete track or needs special handling
+            is_complete = is_song and track_json.get("artist") and track_json.get("title")
+            
+            # Get reason for incomplete tracks (for logging)
+            reason = None
+            if not is_complete:
                 if not is_song:
                     reason = f"non-song media type: {track_json['type']}"
                 elif not track_json.get("artist"):
@@ -233,27 +230,26 @@ class Myrcat:
                     reason = "missing title"
                 else:
                     reason = "unknown reason"
-                
-                # Use default artwork if available
+                    
+                # Use default artwork for incomplete tracks if available
                 if self.default_artwork_path and self.default_artwork_path.exists():
-                    # Get a new filename for the default artwork now, so we can set it in TrackInfo
                     new_artwork = await self.artwork.use_default_artwork()
                     if new_artwork:
                         logging.debug(f"🎨 Using default artwork due to {reason}")
-                        # Update the image in the JSON to use our default artwork
                         track_json["image"] = new_artwork
 
+            # Safely get values with defaults appropriate for complete/incomplete tracks
+            artist = track_json.get("artist", "") if is_song else (track_json.get("artist") or "")
+            title = clean_title(track_json["title"])
+            album = track_json.get("album", "")
+            year = int(track_json.get("year", 0)) if track_json.get("year") else None
+            
             # Create TrackInfo object
             track = TrackInfo(
-                # For non-songs, provide empty string if artist is missing
-                artist=(
-                    track_json.get("artist")
-                    if is_song or track_json.get("artist")
-                    else ""
-                ),
-                title=clean_title(track_json["title"]),
-                album=track_json.get("album", ""),
-                year=int(track_json.get("year", 0)) if track_json.get("year") else None,
+                artist=artist,
+                title=title,
+                album=album,
+                year=year,
                 publisher=track_json.get("publisher", ""),
                 isrc=track_json.get("ISRC", ""),
                 image=track_json.get("image"),
@@ -304,95 +300,68 @@ class Myrcat:
                 )
                 await asyncio.sleep(delay_seconds)
 
-            # Process artwork based on content completeness
+            # Process artwork and determine further action based on track completeness
             new_filename = None
             artwork_hash = None
-
-            # Determine if this is a complete track entry that should get full processing
-            is_complete_track = track.is_song and track.artist and track.title
             
-            if is_complete_track:
-                # Regular complete song processing
+            # Process track based on whether it's complete
+            if is_complete:
+                # Process artwork for complete tracks
                 if track.image:
-                    new_filename = await self.artwork.process_artwork(track.image)
-                    track.image = (
-                        new_filename  # Update track object with the new filename
-                    )
-
-                    # Generate hash for the artwork
-                    artwork_hash = await self.artwork.create_hashed_artwork(
-                        new_filename, track.artist, track.title
-                    )
-                    logging.debug(f"🔑 Generated artwork hash: {artwork_hash}")
-                # Always generate a hash even if there's no image (for complete songs only)
-                else:
+                    # Check if image was already processed (has UUID format)
+                    is_processed_image = (isinstance(track.image, str) and 
+                                         len(track.image) > 32 and "-" in track.image)
+                    
+                    if not is_processed_image:
+                        new_filename = await self.artwork.process_artwork(track.image)
+                        if new_filename:
+                            track.image = new_filename
+                            # Generate hash for the processed artwork
+                            artwork_hash = await self.artwork.create_hashed_artwork(
+                                new_filename, track.artist, track.title
+                            )
+                            logging.debug(f"🔑 Generated artwork hash: {artwork_hash}")
+                # Generate hash even without image
+                elif track.artist and track.title:
                     artwork_hash = self.artwork.generate_hash(track.artist, track.title)
-                    logging.debug(
-                        f"🔑 Generated artwork hash (no image): {artwork_hash}"
-                    )
-
-                # Update playlist file on web server with the artwork hash
+                    logging.debug(f"🔑 Generated artwork hash (no image): {artwork_hash}")
+                
+                # Full processing for complete tracks
                 await self.playlist.update_track(track, artwork_hash)
-
-                # Update track history
                 await self.history.add_track(track, artwork_hash)
-                logging.debug(
-                    f"📋 Updated track history with {track.artist} - {track.title}"
-                )
-
-                # Check for show transition
                 await self.show_handler.check_show_transition(track)
-
-                # Update social media but check if track should be skipped
+                
+                # Social media posting (unless skipped)
                 if self.should_skip_track(track.title, track.artist):
                     logging.info(f"⛔️ Skipping socials - filtered in config!")
                 else:
                     await self.social.update_social_media(track)
-
-                # Log to database
-                await self.db.log_db_playout(track)
-            else:
-                # Incomplete or non-song media type processing
-                if not track.is_song:
-                    reason = f"non-song media type: {track.type}"
-                elif not track.artist:
-                    reason = "missing artist"
-                elif not track.title:
-                    reason = "missing title"
-                else:
-                    reason = "unknown reason"
                 
+                # Database logging
+                await self.db.log_db_playout(track)
+                
+                logging.debug(f"📋 Updated track history with {track.artist} - {track.title}")
+            else:
+                # Limited processing for incomplete tracks
                 logging.info(f"⚙️ Processing incomplete track ({reason})")
-
-                # We already set up the default artwork earlier, but process the image if one was provided
-                # and it's not already a UUID (indicating we assigned it previously)
-                if track.image and not (
-                    # Check if image looks like a UUID (our default artwork naming convention)
-                    isinstance(track.image, str) and 
-                    len(track.image) > 32 and 
-                    "-" in track.image
-                ):
-                    # This is a new image that wasn't set by us earlier
+                
+                # Process any provided image if it's not already processed
+                if track.image and not (isinstance(track.image, str) and 
+                                       len(track.image) > 32 and "-" in track.image):
                     new_filename = await self.artwork.process_artwork(track.image)
                     if new_filename:
-                        track.image = (
-                            new_filename  # Update track object with the processed image
-                        )
+                        track.image = new_filename
                         logging.debug(f"🎨 Processed provided image: {new_filename}")
-
-                # Only update the playlist files, don't create artwork hash
+                
+                # Only update playlist files (no hash)
                 await self.playlist.update_track(track, None)
-
-                # Don't update history
-                logging.debug(f"📋 Skipping history update for incomplete track")
-
-                # Check for show transition (still do this for all media types)
+                
+                # Still check for show transitions
                 await self.show_handler.check_show_transition(track)
-
-                # Skip social media posting
+                
+                # Log skipped operations
+                logging.debug(f"📋 Skipping history update for incomplete track")
                 logging.info(f"⛔️ Skipping socials for incomplete track")
-
-                # Skip database logging
                 logging.debug(f"💾 Skipping database logging for incomplete track")
 
             self.last_processed_track = track
