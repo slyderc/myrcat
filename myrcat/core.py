@@ -217,7 +217,9 @@ class Myrcat:
             is_song = media_type == "song"
             
             # Determine if this is a complete track or needs special handling
-            is_complete = is_song and track_json.get("artist") and track_json.get("title")
+            has_artist = bool(track_json.get("artist"))
+            has_title = bool(track_json.get("title"))
+            is_complete = is_song and has_artist and has_title
             
             # Get reason for incomplete tracks (for logging)
             reason = None
@@ -240,7 +242,11 @@ class Myrcat:
 
             # Safely get values with defaults appropriate for complete/incomplete tracks
             artist = track_json.get("artist", "") if is_song else (track_json.get("artist") or "")
-            title = clean_title(track_json["title"])
+            
+            # Handle missing title - use a placeholder for empty titles
+            raw_title = track_json.get("title", "")
+            title = clean_title(raw_title) if raw_title else "[No Title]"
+            
             album = track_json.get("album", "")
             year = int(track_json.get("year", 0)) if track_json.get("year") else None
             
@@ -391,19 +397,15 @@ class Myrcat:
         media_type = track_json.get("type", "").lower()
         is_song = media_type == "song"
 
-        # For songs, validate artist name
-        if is_song:
-            # Song requires artist field to exist in JSON
-            if "artist" not in track_json:
-                return False, "Missing required field: artist"
-
-            # Song requires artist field to have content
-            if not track_json.get("artist"):
-                return False, "Missing artist! Skipping."
-
-        # All tracks require title to have content
+        # We'll allow tracks with missing artist or title to be processed 
+        # with special handling, so we don't validate those fields here anymore
+        
+        # However, we'll still warn about missing fields in debug logs
+        if is_song and not track_json.get("artist"):
+            logging.debug(f"⚠️ Note: Song missing artist - will use special handling")
+            
         if not track_json.get("title"):
-            return False, "Missing title! Skipping."
+            logging.debug(f"⚠️ Note: Track missing title - will use special handling")
 
         # Numeric validations
         try:

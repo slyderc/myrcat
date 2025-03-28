@@ -142,4 +142,6 @@ def clean_title(title: str) -> str:
     Returns:
         Cleaned track title
     """
+    if not title:
+        return ""
     return re.split(r"[\(\[\<]", title)[0].strip()
