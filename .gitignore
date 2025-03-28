@@ -45,6 +45,7 @@ publish/
 templates/prompts/*.txt
 templates/social/*.png
 templates/fonts/*.ttf
+templates/artwork/*.png
 test/
 temp/*png
 utils/*.ini
