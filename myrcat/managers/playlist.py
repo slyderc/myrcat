@@ -57,18 +57,33 @@ class PlaylistManager:
             artwork_hash: Optional hash for the artwork
         """
         try:
-            playlist_data = {
-                "artist": track.artist,
-                "title": track.title,
-                "album": track.album,
-                "image": f"/player/publish/{track.image}" if track.image else None,
-                "program_title": track.program,
-                "presenter": track.presenter,
-            }
-
-            # Add image_hash if provided
-            if artwork_hash:
-                playlist_data["image_hash"] = artwork_hash
+            if track.is_song:
+                # Standard format for songs
+                playlist_data = {
+                    "artist": track.artist,
+                    "title": track.title,
+                    "album": track.album,
+                    "image": f"/player/publish/{track.image}" if track.image else None,
+                    "program_title": track.program,
+                    "presenter": track.presenter,
+                    "type": track.type.lower(),  # Add type field with lowercase value
+                }
+                
+                # Add image_hash if provided
+                if artwork_hash:
+                    playlist_data["image_hash"] = artwork_hash
+            else:
+                # Special format for non-song media types
+                playlist_data = {
+                    "artist": "",  # Clear artist value
+                    "title": "",   # Clear title value
+                    "album": "",   # Clear album value
+                    "image": f"/player/publish/{track.image}" if track.image else None,
+                    "program_title": track.program,
+                    "presenter": track.presenter,
+                    "type": track.type.lower(),
+                    "image_hash": "",  # Clear image_hash
+                }
 
             # Write JSON file with proper indentation for readability
             with open(self.playlist_json, "w") as f:
@@ -85,8 +100,14 @@ class PlaylistManager:
             track: TrackInfo object containing track information
         """
         try:
-            with open(self.playlist_txt, "w") as txt_file:
-                txt_file.write(f"{track.artist} - {track.title}\n")
+            if track.is_song:
+                # Standard format for songs
+                with open(self.playlist_txt, "w") as txt_file:
+                    txt_file.write(f"{track.artist} - {track.title}\n")
+            else:
+                # Fixed text for non-song media types
+                with open(self.playlist_txt, "w") as txt_file:
+                    txt_file.write("The Next Wave Today - Now Wave Radio\n")
 
             logging.debug("💾 Saved new TXT playlist file")
         except Exception as e:

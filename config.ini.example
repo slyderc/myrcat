@@ -13,6 +13,8 @@ port = 8080
 incoming_directory = incoming
 publish_directory = publish
 cache_directory = ca
+# Default artwork to use when track image is missing (absolute path)
+default_artwork = /path/to/default_nowplaying.jpg
 
 [web]
 playlist_json = playlist.json

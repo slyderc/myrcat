@@ -81,6 +81,19 @@ class Myrcat:
             "web", "history_max_tracks", fallback=30
         )
         self.artwork_cache_dir = Path(self.config.get("artwork", "cache_directory"))
+        
+        # Get default artwork path
+        default_artwork = self.config.get("artwork", "default_artwork", fallback=None)
+        self.default_artwork_path = Path(default_artwork) if default_artwork else None
+        
+        # Check if default artwork exists and log appropriate message
+        if self.default_artwork_path:
+            if self.default_artwork_path.exists():
+                logging.info(f"🎨 Default artwork configured: {self.default_artwork_path}")
+            else:
+                logging.warning(f"⚠️ Default artwork file not found: {self.default_artwork_path}")
+        else:
+            logging.debug("ℹ️ No default artwork configured")
 
         if self.skip_artists:
             logging.warning(f"⚠️ : Artists are being skipped")
@@ -102,6 +115,7 @@ class Myrcat:
                 self.artwork_incoming,
                 self.artwork_publish,
                 self.artwork_cache_dir,
+                self.default_artwork_path,
             )
             self.social = SocialMediaManager(self.config_parser, self.artwork, self.db)
             self.show_handler = ShowHandler(self.config_parser)
@@ -145,8 +159,24 @@ class Myrcat:
         all settings are updated consistently.
         """
         try:
+            # Store old default artwork path for comparison
+            old_default_artwork = self.default_artwork_path
+            
             # Use the same initialization method for updates to ensure consistency
             self._initialize_components()
+            
+            # Check if default artwork path has changed and update ArtworkManager
+            if hasattr(self, "artwork") and old_default_artwork != self.default_artwork_path:
+                # Update the artwork manager with the new default_artwork_path
+                self.artwork.default_artwork_path = self.default_artwork_path
+                if self.default_artwork_path:
+                    log_msg = (f"🎨 Updated default artwork: {self.default_artwork_path}" 
+                              if self.default_artwork_path.exists() 
+                              else f"⚠️ Updated default artwork path, but file not found: {self.default_artwork_path}")
+                    logging.info(log_msg)
+                else:
+                    logging.info("🎨 Default artwork configuration removed")
+            
             logging.info(f"✅ Applied configuration changes to all components")
         except Exception as e:
             logging.error(f"💥 Error applying configuration changes: {e}")
@@ -232,46 +262,72 @@ class Myrcat:
                 )
                 await asyncio.sleep(delay_seconds)
 
-            # Process artwork file on web server
+            # Process artwork based on whether this is a song or not
             new_filename = None
             artwork_hash = None
 
-            if track.image:
-                new_filename = await self.artwork.process_artwork(track.image)
-                track.image = new_filename  # Update track object with the new filename
+            if track.is_song:
+                # Regular song processing
+                if track.image:
+                    new_filename = await self.artwork.process_artwork(track.image)
+                    track.image = new_filename  # Update track object with the new filename
 
-                # Generate hash for the artwork
-                if track.artist and track.title:
-                    artwork_hash = await self.artwork.create_hashed_artwork(
-                        new_filename, track.artist, track.title
-                    )
-                    logging.debug(f"🔑 Generated artwork hash: {artwork_hash}")
-            # Always generate a hash even if there's no image
-            elif track.artist and track.title:
-                artwork_hash = self.artwork.generate_hash(track.artist, track.title)
-                logging.debug(f"🔑 Generated artwork hash (no image): {artwork_hash}")
+                    # Generate hash for the artwork
+                    if track.artist and track.title:
+                        artwork_hash = await self.artwork.create_hashed_artwork(
+                            new_filename, track.artist, track.title
+                        )
+                        logging.debug(f"🔑 Generated artwork hash: {artwork_hash}")
+                # Always generate a hash even if there's no image (for songs only)
+                elif track.artist and track.title:
+                    artwork_hash = self.artwork.generate_hash(track.artist, track.title)
+                    logging.debug(f"🔑 Generated artwork hash (no image): {artwork_hash}")
 
-            # Update playlist file on web server with the artwork hash
-            await self.playlist.update_track(track, artwork_hash)
+                # Update playlist file on web server with the artwork hash
+                await self.playlist.update_track(track, artwork_hash)
 
-            # Update track history
-            await self.history.add_track(track, artwork_hash)
-            logging.debug(
-                f"📋 Updated track history with {track.artist} - {track.title}"
-            )
+                # Update track history
+                await self.history.add_track(track, artwork_hash)
+                logging.debug(
+                    f"📋 Updated track history with {track.artist} - {track.title}"
+                )
 
-            # Check for show transition
-            await self.show_handler.check_show_transition(track)
+                # Check for show transition
+                await self.show_handler.check_show_transition(track)
 
-            # Update social media but check if track should be skipped
-            if self.should_skip_track(track.title, track.artist):
-                logging.info(f"⛔️ Skipping socials - filtered in config!")
-                return
+                # Update social media but check if track should be skipped
+                if self.should_skip_track(track.title, track.artist):
+                    logging.info(f"⛔️ Skipping socials - filtered in config!")
+                else:
+                    await self.social.update_social_media(track)
+
+                # Log to database
+                await self.db.log_db_playout(track)
             else:
-                await self.social.update_social_media(track)
-
-            # Log to database
-            await self.db.log_db_playout(track)
+                # Non-song media type processing
+                logging.info(f"⚙️ Processing non-song media type: {track.type}")
+                
+                # Use default artwork if available
+                if self.default_artwork_path and self.default_artwork_path.exists():
+                    new_filename = await self.artwork.use_default_artwork()
+                    if new_filename:
+                        track.image = new_filename  # Update track object with the default artwork
+                        logging.debug(f"🎨 Using default artwork for {track.type}: {new_filename}")
+                
+                # Only update the playlist files, don't create artwork hash
+                await self.playlist.update_track(track, None)
+                
+                # Don't update history
+                logging.debug(f"📋 Skipping history update for non-song media type: {track.type}")
+                
+                # Check for show transition (still do this for all media types)
+                await self.show_handler.check_show_transition(track)
+                
+                # Skip social media posting
+                logging.info(f"⛔️ Skipping socials for non-song media type: {track.type}")
+                
+                # Skip database logging
+                logging.debug(f"💾 Skipping database logging for non-song media type: {track.type}")
 
             self.last_processed_track = track
 

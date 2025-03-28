@@ -27,6 +27,7 @@ class ArtworkManager:
         incoming_dir: Path,
         publish_dir: Path,
         hashed_artwork_dir: Optional[Path] = None,
+        default_artwork_path: Optional[Path] = None,
     ):
         """Initialize the artwork manager.
         
@@ -34,10 +35,12 @@ class ArtworkManager:
             incoming_dir: Directory where incoming artwork files are stored
             publish_dir: Directory to publish artwork files
             hashed_artwork_dir: Directory for cached artwork files (using hash-based filenames)
+            default_artwork_path: Path to default artwork file to use when track image is missing
         """
         self.incoming_dir = incoming_dir
         self.publish_dir = publish_dir
         self.cached_artwork_dir = hashed_artwork_dir  # renamed but kept parameter name for backward compatibility
+        self.default_artwork_path = default_artwork_path
         self.current_image: Optional[str] = None
 
         # Create directories if they don't exist
@@ -45,6 +48,52 @@ class ArtworkManager:
         if self.cached_artwork_dir:
             self.cached_artwork_dir.mkdir(parents=True, exist_ok=True)
 
+    async def _publish_image_to_artwork_dir(self, source_path: Path, remove_source: bool = False) -> Optional[str]:
+        """Internal helper to publish an image to the artwork directory with a unique name.
+        
+        Args:
+            source_path: Path to the source image file
+            remove_source: Whether to remove the source file after copying
+            
+        Returns:
+            New filename if successful, None otherwise
+        """
+        if not source_path.exists():
+            logging.warning(f"⚠️ Source artwork file missing: {source_path}")
+            return None
+            
+        try:
+            # Generate unique filename
+            new_filename = f"{uuid.uuid4()}.jpg"
+            publish_path = self.publish_dir / new_filename
+            
+            # Copy file to publish directory with unique name
+            copy_success = await self._copy_file(
+                source_path=source_path,
+                target_path=publish_path
+            )
+            
+            if not copy_success:
+                return None
+                
+            # Remove source file if requested
+            if remove_source:
+                try:
+                    source_path.unlink()
+                except Exception as e:
+                    logging.warning(f"⚠️ Could not remove source file {source_path}: {e}")
+                
+            # Update current image
+            self.current_image = new_filename
+            
+            # Clean up old files from publish directory
+            await self.cleanup_old_artwork()
+            
+            return new_filename
+        except Exception as e:
+            logging.error(f"💥 Error publishing artwork from {source_path}: {e}")
+            return None
+    
     async def process_artwork(self, filename: str) -> Optional[str]:
         """Process artwork file with unique name and clean up old files.
         
@@ -63,26 +112,32 @@ class ArtworkManager:
         if not await self.wait_for_file(incoming_path):
             logging.warning(f"⚠️ Artwork file missing: {incoming_path}")
             return None
-
-        try:
-            # Generate unique filename
-            new_filename = f"{uuid.uuid4()}.jpg"
-            publish_path = self.publish_dir / new_filename
-
-            # Copy file to web server with unique name
-            shutil.copy2(str(incoming_path), str(publish_path))
-            # Remove original MYR12345.jpg from Myriad FTP
-            incoming_path.unlink()
-            # Update current image
-            self.current_image = new_filename
-            # Clean up old files from web server directory
-            await self.cleanup_old_artwork()
-
+            
+        # Publish the image using the helper method
+        new_filename = await self._publish_image_to_artwork_dir(incoming_path, remove_source=True)
+        
+        if new_filename:
             logging.debug(f"🎨 Artwork published: {new_filename}")
-            return new_filename
-        except Exception as e:
-            logging.error(f"💥 Error processing artwork: {e}")
+            
+        return new_filename
+            
+    async def use_default_artwork(self) -> Optional[str]:
+        """Use the default artwork when a track has no image or for non-song media types.
+        
+        Returns:
+            New filename for the default artwork if successful, None otherwise
+        """
+        if not self.default_artwork_path or not self.default_artwork_path.exists():
+            logging.warning(f"⚠️ Default artwork not found or not configured")
             return None
+        
+        # Publish the default image using the helper method
+        new_filename = await self._publish_image_to_artwork_dir(self.default_artwork_path, remove_source=False)
+        
+        if new_filename:
+            logging.debug(f"🎨 Default artwork published: {new_filename}")
+            
+        return new_filename
 
     async def create_hashed_artwork(
         self, filename: str, artist: str, title: str
@@ -108,25 +163,58 @@ class ArtworkManager:
 
         # Ensure the file exists before trying to copy it
         if not original_artwork.exists():
-            logging.warning(
-                f"⚠️ Original artwork not found for hashing: {original_artwork}"
-            )
+            logging.warning(f"⚠️ Original artwork not found for hashing: {original_artwork}")
             return artwork_hash
 
         try:
-            # Create cached artwork filename
+            # Create cached artwork filename and path
             cached_filename = f"{artwork_hash}.jpg"
             cached_artwork_path = self.cached_artwork_dir / cached_filename
 
             # Only copy if the cached file doesn't already exist
             if not cached_artwork_path.exists():
-                shutil.copy2(str(original_artwork), str(cached_artwork_path))
-                logging.debug(f"🎨 Created cached artwork: {cached_filename}")
+                await self._copy_file(
+                    source_path=original_artwork,
+                    target_path=cached_artwork_path,
+                    log_message=f"🎨 Created cached artwork: {cached_filename}"
+                )
 
             return artwork_hash
         except Exception as e:
             logging.error(f"💥 Error creating cached artwork: {e}")
             return artwork_hash  # Still return the hash even if file operation fails
+    
+    async def _copy_file(self, source_path: Path, target_path: Path, log_message: str = None) -> bool:
+        """Helper method to copy a file with proper error handling.
+        
+        Args:
+            source_path: Path to the source file
+            target_path: Path to the target destination
+            log_message: Optional message to log on success
+            
+        Returns:
+            True if the copy was successful, False otherwise
+        """
+        try:
+            # Ensure the source file exists
+            if not source_path.exists():
+                logging.warning(f"⚠️ Source file not found: {source_path}")
+                return False
+                
+            # Ensure the target directory exists
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy the file
+            shutil.copy2(str(source_path), str(target_path))
+            
+            # Log success message if provided
+            if log_message:
+                logging.debug(log_message)
+                
+            return True
+        except Exception as e:
+            logging.error(f"💥 Error copying file from {source_path} to {target_path}: {e}")
+            return False
 
     async def wait_for_file(self, incoming_path: Path) -> bool:
         """Wait for file to appear, return True if found.
