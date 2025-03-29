@@ -48,6 +48,7 @@ templates/fonts/*.ttf
 templates/artwork/*.png
 test/
 backup/
+reports/
 temp/*png
 utils/*.ini
 test.sh
