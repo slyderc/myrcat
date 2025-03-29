@@ -47,6 +47,7 @@ templates/social/*.png
 templates/fonts/*.ttf
 templates/artwork/*.png
 test/
+backup/
 temp/*png
 utils/*.ini
 test.sh
