@@ -44,6 +44,8 @@ image_width = 1200
 image_height = 630
 # Character limit for posts
 character_limit = 500
+# TESTING ONLY: Set to true to bypass frequency limits and post every track
+testing_mode = false
 
 [bluesky]
 handle =

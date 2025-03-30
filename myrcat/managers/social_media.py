@@ -173,6 +173,9 @@ class SocialMediaManager:
             self.fb_char_limit = self.config.getint(
                 "facebook", "character_limit", fallback=500
             )
+            self.fb_testing_mode = self.config.getboolean(
+                "facebook", "testing_mode", fallback=False
+            )
             
             # Image dimensions
             self.fb_image_width = self.config.getint(
@@ -186,8 +189,14 @@ class SocialMediaManager:
                 f"Facebook initialized for page: {self.fb_page_id} "
                 f"(images: {'enabled' if self.fb_enable_images else 'disabled'}, "
                 f"AI: {'enabled' if self.fb_enable_ai else 'disabled'}, "
-                f"image size: {self.fb_image_width}x{self.fb_image_height})"
+                f"image size: {self.fb_image_width}x{self.fb_image_height}, "
+                f"testing mode: {'enabled' if self.fb_testing_mode else 'disabled'})"
             )
+            
+            if self.fb_testing_mode:
+                logging.warning(
+                    f"🧪 TESTING MODE ENABLED: Facebook frequency limits disabled - every track will be posted"
+                )
         except Exception as e:
             logging.error(f"💥 Facebook setup error: {str(e)}")
             self.facebook = None
@@ -330,11 +339,14 @@ class SocialMediaManager:
             True if posting is allowed, False otherwise
         """
         # Check for testing mode (bypass frequency limits)
-        if (
-            platform == "Bluesky"
-            and hasattr(self, "bluesky_testing_mode")
-            and self.bluesky_testing_mode
-        ):
+        if platform == "Bluesky" and hasattr(self, "bluesky_testing_mode") and self.bluesky_testing_mode:
+            logging.debug(f"🧪 Testing mode: Bypassing frequency limits for {platform}")
+            # Still update the timestamp for tracking
+            self.last_post_times[platform] = datetime.now()
+            return True
+            
+        # Check for Facebook testing mode
+        if platform == "Facebook" and hasattr(self, "fb_testing_mode") and self.fb_testing_mode:
             logging.debug(f"🧪 Testing mode: Bypassing frequency limits for {platform}")
             # Still update the timestamp for tracking
             self.last_post_times[platform] = datetime.now()
@@ -345,6 +357,9 @@ class SocialMediaManager:
 
         if platform == "Bluesky" and hasattr(self, "bluesky_post_frequency"):
             frequency_hours = self.bluesky_post_frequency
+            
+        if platform == "Facebook" and hasattr(self, "fb_post_frequency"):
+            frequency_hours = self.fb_post_frequency
 
         # First try to get last post time from database (persistent across restarts)
         last_post_time = self.db_manager.get_last_post_time(platform)
