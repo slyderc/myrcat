@@ -1,6 +1,6 @@
 [general]
 log_level = INFO
-log_file = myrcat.log
+log_file = log/myrcat.log
 database_path = myrcat.db
 publish_delay = 45
 timezone = US/Pacific
@@ -13,8 +13,7 @@ port = 8080
 incoming_directory = incoming
 publish_directory = publish
 cache_directory = ca
-# Default artwork to use when track image is missing (absolute path)
-default_artwork = /path/to/default_nowplaying.jpg
+default_artwork = templates/artwork/default_nowplaying.jpg
 
 [web]
 playlist_json = playlist.json
@@ -38,15 +37,11 @@ page_id =
 [bluesky]
 handle =
 app_password =
-# Enable existing artwork attachments for Bluesky posts
 enable_images = true
-# Enable AI-enhanced post content for Bluesky
 enable_ai_content = true
 # Post frequency limit (hours between posts)
 post_frequency = 1
-# Image width for Bluesky posts (pixels)
 image_width = 600
-# Image height for Bluesky posts (pixels)
 image_height = 600
 # TESTING ONLY: Set to true to bypass frequency limits and post every track
 testing_mode = false
@@ -54,9 +49,7 @@ testing_mode = false
 [ai_content]
 # AI model to use for content generation
 model = claude-3-7-sonnet-latest
-# API key for Anthropic
 anthropic_api_key =
-# Maximum tokens for AI generation
 max_tokens = 125
 # Temperature for content generation (0.0-1.0)
 temperature = 0.7
@@ -69,13 +62,12 @@ testing_mode = False
 
 [publish_exceptions]
 publish_socials = False
-
 # Disable specific services; ie: Bluesky, Facebook, LastFM, ListenBrainz - or None
 disable_services = Bluesky, Facebook
 
 # Skip lists for artists and titles - exact matches for either won't publish anything from the current Myriad payload
-skip_artists_file = skip_artists.txt
-skip_titles_file = skip_titles.txt
+skip_artists_file = conf/skip_artists.txt
+skip_titles_file = conf/skip_titles.txt
 
 [database]
 # SoundExchange reporting period (in days)
