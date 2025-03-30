@@ -33,6 +33,17 @@ app_id =
 app_secret =
 access_token =
 page_id =
+# Enable image attachments for Facebook posts
+enable_images = true
+# Enable AI-enhanced post content for Facebook
+enable_ai_content = true
+# Post frequency limit (hours between posts)
+post_frequency = 1
+# Image dimensions for Facebook
+image_width = 1200
+image_height = 630
+# Character limit for posts
+character_limit = 500
 
 [bluesky]
 handle =
