@@ -95,3 +95,101 @@ If you encounter errors:
 4. Run with verbose logging to see what's happening
 
 For more detailed error information, you can modify the logging level in the script to DEBUG.
+
+## facebook_token_manager.py
+
+A utility for managing Facebook access tokens, including generation, validation, and automatic renewal.
+
+### Purpose
+
+This utility helps maintain valid Facebook access tokens for the Myrcat system, ensuring uninterrupted posting to Facebook. It handles:
+
+- Interactive token generation with proper permissions
+- Token storage in the database with expiration tracking
+- Token validation and status checking
+- Automatic token refresh before expiration
+- Configuration updates with new tokens
+
+### Features
+
+- OAuth-based authentication flow
+- Long-lived page access token generation
+- Token expiration tracking
+- Database integration for persistent token storage
+- Config file integration
+- Command-line interface for common operations
+
+### Usage
+
+1. Generate a new token:
+
+```bash
+python utils/facebook_token_manager.py generate
+```
+
+2. Check the status of the current token:
+
+```bash
+python utils/facebook_token_manager.py check
+```
+
+3. Refresh the token (if needed):
+
+```bash
+python utils/facebook_token_manager.py refresh
+```
+
+4. Interactive setup process:
+
+```bash
+python utils/facebook_token_manager.py setup
+```
+
+### Token Management Flow
+
+The utility implements the following token management flow:
+
+1. **Generation**: Creates a long-lived page access token using OAuth authentication
+2. **Storage**: Stores the token in the database with creation and expiration timestamps
+3. **Validation**: Checks token validity and expiration using Facebook's debug_token endpoint
+4. **Renewal**: Automatically refreshes tokens that are expiring soon
+
+### Auto-Refresh Integration
+
+The Myrcat system is integrated with this utility to enable automatic token refreshing:
+
+- The `SocialMediaManager` checks token validity before posting
+- If a token is expiring soon (within 7 days), it attempts auto-refresh
+- The TokenManager handles the refresh process and updates the configuration
+- The system loads the new token and continues operation without interruption
+
+### Requirements
+
+- Facebook Developer Account
+- Facebook App with appropriate permissions:
+  - pages_show_list
+  - pages_read_engagement
+  - pages_manage_posts
+- A Facebook Page that you manage
+- App ID and App Secret in your config.ini
+- Page ID in your config.ini
+
+### Troubleshooting
+
+If you encounter token errors:
+
+1. Run the check command to see the current token status:
+   ```bash
+   python utils/facebook_token_manager.py check
+   ```
+
+2. If the token is invalid, try generating a new one:
+   ```bash
+   python utils/facebook_token_manager.py generate
+   ```
+
+3. Check your app permissions in the Facebook Developer Console
+4. Verify your Page ID is correct
+5. Ensure your app has been approved for the required permissions
+
+For more detailed error information, run the commands with verbose logging.

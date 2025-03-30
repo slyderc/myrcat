@@ -93,9 +93,36 @@ logfile = /var/log/myrcat/myrcat.log
 
 3. Facebook:
 
-   - Create Facebook App
-   - Get page access token
-   - Set access_token and page_id in config
+   - Create Facebook App at https://developers.facebook.com/apps/
+   - Get page access token with permissions: pages_show_list, pages_read_engagement, pages_manage_posts
+   - Set access_token, app_id, app_secret, and page_id in config
+   - Configure additional Facebook settings:
+     ```ini
+     [facebook]
+     app_id = your-app-id
+     app_secret = your-app-secret
+     access_token = your-page-access-token
+     page_id = your-page-id
+     # Enable image attachments for Facebook posts
+     enable_images = true
+     # Enable AI-enhanced post content for Facebook
+     enable_ai_content = true
+     # Post frequency limit (hours between posts)
+     post_frequency = 1
+     # Image dimensions for Facebook
+     image_width = 1200
+     image_height = 630
+     ```
+     
+     Note: Facebook token management is entirely async, which means token validation and refresh operations should be properly awaited. You can check token status and manually refresh tokens using the CLI utility:
+     
+     ```bash
+     # Check current token status
+     python utils/facebook_token_cli.py status
+     
+     # Force token refresh
+     python utils/facebook_token_cli.py refresh
+     ```
 
 4. Bluesky:
 
@@ -294,6 +321,30 @@ sqlite3 /var/lib/myrcat/myrcat.db "DELETE FROM social_media_posts WHERE posted_a
 ```
 
 ## Development Utilities
+
+### Facebook Token Management
+
+A command-line utility is available to help manage Facebook tokens:
+
+```bash
+# Check current token status
+python utils/facebook_token_cli.py status
+
+# Force refresh the token
+python utils/facebook_token_cli.py refresh
+
+# Show token history
+python utils/facebook_token_cli.py history
+```
+
+The utility integrates directly with Myrcat and provides:
+
+- Token status checking with expiration warnings
+- Token refresh capabilities
+- Token history tracking
+- Database integration for token persistence
+
+Facebook tokens generally expire after 60 days, so periodic token refreshes are recommended. The Myrcat system will automatically attempt to refresh tokens when they are nearing expiration.
 
 ### Test Prompt Utility
 
