@@ -20,6 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 .git
+CLAUDE.md
 
 # Virtual Environment
 venv/
