@@ -20,19 +20,22 @@ playlist_json = playlist.json
 playlist_txt = playlist.txt
 
 [lastfm]
+enabled = false
 api_key =
 api_secret =
 username =
 password =
 
 [listenbrainz]
+enabled = false
 token =
 
 [facebook]
+enabled = false
 app_id =
 app_secret =
-access_token =
 page_id =
+# Token is stored in database, not in config
 # Enable image attachments for Facebook posts
 enable_images = true
 # Enable AI-enhanced post content for Facebook
@@ -48,6 +51,7 @@ character_limit = 500
 testing_mode = false
 
 [bluesky]
+enabled = false
 handle =
 app_password =
 enable_images = true
@@ -75,8 +79,7 @@ testing_mode = False
 
 [publish_exceptions]
 publish_socials = False
-# Disable specific services; ie: Bluesky, Facebook, LastFM, ListenBrainz - or None
-disable_services = Bluesky, Facebook
+# NOTE: Service-specific enabling/disabling is now handled in each section with 'enabled = true/false'
 
 # Skip lists for artists and titles - exact matches for either won't publish anything from the current Myriad payload
 skip_artists_file = conf/skip_artists.txt

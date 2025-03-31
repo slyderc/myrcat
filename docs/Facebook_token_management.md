@@ -8,8 +8,8 @@ Facebook tokens, particularly page access tokens, have limited lifetimes and exp
 
 1. **Token Validation**: Checks if tokens are valid and not expired
 2. **Automatic Refreshing**: Refreshes tokens before they expire
-3. **Token Storage**: Maintains a history of tokens with timestamps
-4. **Configuration Updates**: Updates the config file with new tokens
+3. **Token Storage**: Stores tokens securely in the database, not in config files
+4. **In-Memory State**: Maintains token state in memory for performance
 5. **Status Monitoring**: Provides detailed token status information
 6. **CLI Interface**: Command-line tools for token management
 
@@ -22,17 +22,16 @@ Token management is integrated directly into the `SocialMediaManager` class with
 - `_validate_facebook_token()`: Checks if the current token is valid
 - `_validate_facebook_token_info()`: Gets detailed token information
 - `_refresh_facebook_token()`: Refreshes the token when needed
-- `_store_facebook_token()`: Stores token history in database
+- `_store_facebook_token()`: Stores token in the database
 - `get_facebook_token_status()`: Gets detailed token status
 
-### 2. Database Integration
+### 2. Database-Only Token Storage
 
-Token history is stored in a SQLite database table:
+Tokens are now stored ONLY in the database, not in configuration files. This improves security and centralizes token management. The database uses a simplified schema:
 
 ```sql
 CREATE TABLE IF NOT EXISTS facebook_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    token_type TEXT NOT NULL,
     access_token TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at TEXT,
@@ -40,14 +39,11 @@ CREATE TABLE IF NOT EXISTS facebook_tokens (
 )
 ```
 
-This allows:
-- Tracking token history
-- Monitoring token expiration times
-- Maintaining access to previous tokens if needed
+While the system only uses the most recent valid token, history is maintained for auditing purposes.
 
 ### 3. Command-Line Interface
 
-A separate CLI tool (`facebook_token_cli.py`) provides access to token management functions:
+An enhanced CLI tool (`facebook_token_cli.py`) provides access to token management functions:
 
 ```bash
 # Check current token status
@@ -55,6 +51,9 @@ python utils/facebook_token_cli.py status
 
 # Force refresh the token
 python utils/facebook_token_cli.py refresh
+
+# Generate a new token interactively
+python utils/facebook_token_cli.py generate
 
 # Show token history
 python utils/facebook_token_cli.py history
@@ -68,7 +67,7 @@ The system validates tokens at strategic points:
 - When explicitly checking token status
 - Cached validation results are used when possible (validation_interval: 1 hour)
 
-Note that validation is implemented as async coroutines, so they must be properly awaited. Token validation is NOT performed during initialization to avoid async issues in synchronous contexts.
+Validation is now based on token state maintained in memory, with expiration dates checked for quick validation without API calls.
 
 ### 5. Automatic Token Refresh
 
@@ -81,9 +80,8 @@ The system will automatically refresh tokens when:
 
 1. The system uses the Facebook Graph API to exchange the current token for a new one
 2. The new token is stored in the database with creation and expiration timestamps
-3. The config file is updated with the new token
-4. The memory representation is updated with the new token
-5. The Facebook GraphAPI client is reinitialized with the new token
+3. The in-memory token state is updated
+4. The Facebook GraphAPI client is reinitialized with the new token
 
 ## Configuration Requirements
 
@@ -91,31 +89,57 @@ For token management to function properly, these fields must be set in the confi
 
 ```ini
 [facebook]
+enabled = true  # Set to true to activate Facebook integration
 app_id = your-facebook-app-id
 app_secret = your-facebook-app-secret
-access_token = your-page-access-token
 page_id = your-facebook-page-id
 ```
 
-## Security Considerations
+**Important**: The access_token is no longer stored in the configuration file. All tokens are stored in the database only.
 
-- Access tokens are stored in the database and config file
-- For production deployments, ensure these files have appropriate permissions
-- The app_secret in particular should be protected
-- Consider encrypting sensitive information in the database for higher security
+In addition, the global social media publishing switch must be enabled:
+
+```ini
+[publish_exceptions]
+publish_socials = true
+```
+
+Both the global `publish_socials` setting and the Facebook-specific `enabled` setting must be `true` for Facebook posting to be active.
+
+## Generating a New Token
+
+The new `generate` command in the CLI tool guides you through creating a new token:
+
+```bash
+python utils/facebook_token_cli.py generate
+```
+
+This interactive process will:
+1. Open the Facebook Graph API Explorer in your browser
+2. Guide you through permission selection
+3. Help you generate a token with the right scope
+4. Validate and store the token in the database
+5. Initialize the system to use the new token
+
+## Security Improvements
+
+- Access tokens are now stored ONLY in the database, not in config files
+- Token data is loaded into memory during initialization
+- Only app credentials (app_id, app_secret) remain in the config file
+- For production deployments, ensure database files have appropriate permissions
 
 ## Troubleshooting
 
 Common token issues:
 
-1. **Invalid App ID/Secret**: Check your Facebook Developer account
-2. **Expired Token**: Use the CLI to refresh the token
-3. **Insufficient Permissions**: The token must have these permissions:
+1. **No Token in Database**: Use the CLI's `generate` command to create a new token
+2. **Invalid App ID/Secret**: Check your Facebook Developer account
+3. **Expired Token**: Use the CLI to refresh the token
+4. **Insufficient Permissions**: The token must have these permissions:
    - pages_show_list
    - pages_read_engagement
    - pages_manage_posts
-4. **Database Connection Issues**: Check database file permissions
-5. **Config File Issues**: Ensure config file is readable and writable
+5. **Database Connection Issues**: Check database file permissions
 
 ## Future Improvements
 

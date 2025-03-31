@@ -81,27 +81,51 @@ logfile = /var/log/myrcat/myrcat.log
 
 ### Social Media Setup
 
+Each social media service has its own section in the config file with an `enabled` option that determines whether that service is active. Set `enabled = true` to activate a service.
+
+> **Note:** There is also a global `publish_socials` option in the `[publish_exceptions]` section. If this is set to `false`, no social media posts will be sent regardless of individual service settings. You must set both the global option to `true` AND the service-specific `enabled` option to `true` for a service to be active.
+>
+> ```ini
+> [publish_exceptions]
+> publish_socials = true  # Master switch for all social media
+> ```
+
 1. Last.FM:
 
    - Create API application at https://www.last.fm/api/account/create
+   - Set enabled = true to activate this service
    - Set api_key and api_secret in config
+   ```ini
+   [lastfm]
+   enabled = true
+   api_key = your_api_key
+   api_secret = your_api_secret
+   username = your_username
+   password = your_password
+   ```
 
 2. Listenbrainz:
 
    - Get token from https://listenbrainz.org/profile/
-   - Set auth_token in config
+   - Set enabled = true to activate this service
+   - Set token in config
+   ```ini
+   [listenbrainz]
+   enabled = true
+   token = your_token
+   ```
 
 3. Facebook:
 
    - Create Facebook App at https://developers.facebook.com/apps/
-   - Get page access token with permissions: pages_show_list, pages_read_engagement, pages_manage_posts
-   - Set access_token, app_id, app_secret, and page_id in config
+   - Set enabled = true to activate this service
+   - Set app_id, app_secret, and page_id in config (tokens are stored in the database)
    - Configure additional Facebook settings:
      ```ini
      [facebook]
+     enabled = true
      app_id = your-app-id
      app_secret = your-app-secret
-     access_token = your-page-access-token
      page_id = your-page-id
      # Enable image attachments for Facebook posts
      enable_images = true
@@ -114,22 +138,30 @@ logfile = /var/log/myrcat/myrcat.log
      image_height = 630
      ```
      
-     Note: Facebook token management is entirely async, which means token validation and refresh operations should be properly awaited. You can check token status and manually refresh tokens using the CLI utility:
+     **Important**: Facebook tokens are stored only in the database, not in the configuration file. This improves security by separating credentials from tokens. Use the token CLI utility to generate and manage tokens:
      
      ```bash
+     # Generate a new token (interactive process)
+     python utils/facebook_token_cli.py generate
+     
      # Check current token status
      python utils/facebook_token_cli.py status
      
      # Force token refresh
      python utils/facebook_token_cli.py refresh
+     
+     # View token history
+     python utils/facebook_token_cli.py history
      ```
 
 4. Bluesky:
 
+   - Set enabled = true to activate this service
    - Set handle and app_password in config
    - Configure additional Bluesky settings:
      ```ini
      [bluesky]
+     enabled = true
      handle = your-handle.bsky.social
      app_password = your-app-password
      # Enable image attachments for Bluesky posts
@@ -327,6 +359,9 @@ sqlite3 /var/lib/myrcat/myrcat.db "DELETE FROM social_media_posts WHERE posted_a
 A command-line utility is available to help manage Facebook tokens:
 
 ```bash
+# Generate a new token interactively
+python utils/facebook_token_cli.py generate
+
 # Check current token status
 python utils/facebook_token_cli.py status
 
@@ -339,12 +374,17 @@ python utils/facebook_token_cli.py history
 
 The utility integrates directly with Myrcat and provides:
 
+- Token generation with guided interactive process
 - Token status checking with expiration warnings
 - Token refresh capabilities
 - Token history tracking
-- Database integration for token persistence
+- Database-only token storage (improved security)
 
-Facebook tokens generally expire after 60 days, so periodic token refreshes are recommended. The Myrcat system will automatically attempt to refresh tokens when they are nearing expiration.
+**Security Improvements**: Facebook tokens are now stored only in the database, not in configuration files. This improves security by separating app credentials from access tokens. The system loads tokens from the database during initialization and maintains token state in memory for better performance.
+
+Facebook tokens generally expire after 60 days, so periodic token refreshes are recommended. The Myrcat system will automatically attempt to refresh tokens when they are nearing expiration or when a token is found to be invalid.
+
+For detailed documentation on the token management system, see `docs/Facebook_token_management.md`.
 
 ### Test Prompt Utility
 

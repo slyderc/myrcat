@@ -48,29 +48,29 @@ class SocialMediaManager:
             "social_analytics", "artist_repost_window", fallback=60
         )
 
-        # Check if social media publishing is enabled
+        # Check if social media publishing is globally enabled
         self.publish_enabled = self.config.getboolean(
             "publish_exceptions", "publish_socials", fallback=True
         )
 
-        # Get list of disabled services (comma-separated)
-        disabled_str = self.config.get(
-            "publish_exceptions", "disable_services", fallback=""
-        ).strip()
-
-        if not disabled_str or disabled_str.lower() == "none":
-            self.disabled_services = []
-        else:
-            self.disabled_services = [
-                s.strip() for s in disabled_str.split(",") if s.strip()
-            ]
-
+        # Check individual service enabled states
+        self.service_enabled = {
+            "LastFM": self.config.getboolean("lastfm", "enabled", fallback=False),
+            "ListenBrainz": self.config.getboolean("listenbrainz", "enabled", fallback=False),
+            "Bluesky": self.config.getboolean("bluesky", "enabled", fallback=False),
+            "Facebook": self.config.getboolean("facebook", "enabled", fallback=False)
+        }
+        
         logging.info(
             f"{'✅' if self.publish_enabled else '⛔️'} Social media publishing {'enabled' if self.publish_enabled else 'disabled'}"
         )
-
-        if self.disabled_services and self.publish_enabled:
-            logging.info(f"⚠️ Disabling services: {', '.join(self.disabled_services)}")
+        
+        # Log enabled services
+        enabled_services = [name for name, enabled in self.service_enabled.items() if enabled]
+        if enabled_services:
+            logging.info(f"✅ Enabled services: {', '.join(enabled_services)}")
+        else:
+            logging.info("⚠️ No social media services are enabled")
 
         # Initialize new components
         self.content_generator = ContentGenerator(config)
@@ -78,15 +78,15 @@ class SocialMediaManager:
         # Initialize analytics
         self.analytics = SocialMediaAnalytics(config, db_manager)
 
-        # Initialize enabled services
+        # Initialize services that are enabled
         if self.publish_enabled:
-            if "LastFM" not in self.disabled_services:
+            if self.service_enabled["LastFM"]:
                 self.setup_lastfm()
-            if "ListenBrainz" not in self.disabled_services:
+            if self.service_enabled["ListenBrainz"]:
                 self.setup_listenbrainz()
-            if "Bluesky" not in self.disabled_services:
+            if self.service_enabled["Bluesky"]:
                 self.setup_bluesky()
-            if "Facebook" not in self.disabled_services:
+            if self.service_enabled["Facebook"]:
                 self.setup_facebook()
 
     def setup_lastfm(self):
@@ -153,29 +153,74 @@ class SocialMediaManager:
     def setup_facebook(self):
         """Initialize Facebook Graph API client."""
         try:
-            # Ensure token database table exists
+            # Initialize variables
+            self.facebook = None
+            self.fb_page_id = self.config["facebook"]["page_id"]
+            self._fb_token_valid = False
+            self._last_fb_token_validation = 0  # Force validation on first use
+            self._fb_access_token = None
+            self._fb_token_expires_at = None
+            
+            # Configure and create token database table if it doesn't exist
             if hasattr(self, "db_manager") and self.db_manager:
                 with self.db_manager._get_connection() as conn:
+                    # Simplified token table - only stores the current token
                     conn.execute("""
                     CREATE TABLE IF NOT EXISTS facebook_tokens (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        token_type TEXT NOT NULL,
                         access_token TEXT NOT NULL,
                         created_at TEXT NOT NULL,
                         expires_at TEXT,
                         metadata TEXT
                     )
                     """)
+                    
+                    # Try to load the most recent token
+                    cursor = conn.execute("""
+                        SELECT access_token, expires_at 
+                        FROM facebook_tokens 
+                        ORDER BY id DESC LIMIT 1
+                    """)
+                    token_data = cursor.fetchone()
+                    
+                    # If we found a token in the database
+                    if token_data:
+                        self._fb_access_token = token_data[0]
+                        self._fb_token_expires_at = token_data[1]
+                        
+                        # Initialize the Facebook client with the token
+                        if self._fb_access_token:
+                            self.facebook = GraphAPI(self._fb_access_token)
+                            
+                            # Calculate days until expiration and log detailed information
+                            if self._fb_token_expires_at:
+                                try:
+                                    expiry_date = datetime.fromisoformat(self._fb_token_expires_at)
+                                    days_remaining = (expiry_date - datetime.now()).days
+                                    
+                                    # Determine when auto-renewal will occur (3 days threshold)
+                                    auto_renew_date = expiry_date - timedelta(days=3)
+                                    auto_renew_days = days_remaining - 3
+                                    
+                                    logging.debug(
+                                        f"🔑 Facebook token status: {days_remaining} days until expiration "
+                                        f"(expires: {expiry_date.isoformat()}). "
+                                        f"Auto-renewal will trigger in {auto_renew_days} days "
+                                        f"(on {auto_renew_date.strftime('%Y-%m-%d')})"
+                                    )
+                                    
+                                    if days_remaining <= 7:
+                                        logging.warning(f"⚠️ Facebook token will expire soon! Only {days_remaining} days remaining")
+                                    if days_remaining <= 3:
+                                        logging.warning(f"⚠️ Facebook token critically close to expiration! Only {days_remaining} days remaining")
+                                except (ValueError, TypeError) as e:
+                                    logging.debug(f"Loaded Facebook token from database (expiration date could not be parsed: {self._fb_token_expires_at})")
+                            else:
+                                logging.debug(f"Loaded Facebook token from database (no expiration date available)")
+                    else:
+                        logging.warning("⚠️ No Facebook token found in database - needs to be generated")
             
-            # Initialize the Facebook client
-            self.facebook = GraphAPI(self.config["facebook"]["access_token"])
-            self.fb_page_id = self.config["facebook"]["page_id"]
-            
-            # Initialize token validation state
-            self._fb_token_valid = True  # Assume valid until checked
-            self._last_fb_token_validation = 0  # Force validation on first use
-            
-            # New configuration options
+            # Configuration options
             self.fb_enable_images = self.config.getboolean(
                 "facebook", "enable_images", fallback=True
             )
@@ -200,19 +245,23 @@ class SocialMediaManager:
                 "facebook", "image_height", fallback=630
             )
             
-            logging.debug(
-                f"Facebook initialized for page: {self.fb_page_id} "
-                f"(images: {'enabled' if self.fb_enable_images else 'disabled'}, "
-                f"AI: {'enabled' if self.fb_enable_ai else 'disabled'}, "
-                f"image size: {self.fb_image_width}x{self.fb_image_height}, "
-                f"testing mode: {'enabled' if self.fb_testing_mode else 'disabled'})"
-            )
-            
-            if self.fb_testing_mode:
-                logging.warning(
-                    f"🧪 TESTING MODE ENABLED: Facebook frequency limits disabled - every track will be posted"
+            # Log status
+            if self.facebook:
+                logging.debug(
+                    f"Facebook initialized for page: {self.fb_page_id} "
+                    f"(images: {'enabled' if self.fb_enable_images else 'disabled'}, "
+                    f"AI: {'enabled' if self.fb_enable_ai else 'disabled'}, "
+                    f"image size: {self.fb_image_width}x{self.fb_image_height}, "
+                    f"testing mode: {'enabled' if self.fb_testing_mode else 'disabled'})"
                 )
                 
+                if self.fb_testing_mode:
+                    logging.warning(
+                        f"🧪 TESTING MODE ENABLED: Facebook frequency limits disabled - every track will be posted"
+                    )
+            else:
+                logging.warning("⚠️ Facebook client not initialized - token needs to be generated")
+            
             # We'll validate the token on first use instead of at initialization
             # since we're in a synchronous method and can't await coroutines directly
             logging.debug("Token will be validated on first use")
@@ -243,12 +292,13 @@ class SocialMediaManager:
         Returns:
             True if credentials are valid, False otherwise
         """
-        # First check if we have the basic credentials
+        # First check if we have the basic credentials and token
         has_credentials = (
             hasattr(self, "facebook") 
             and self.facebook is not None
             and hasattr(self, "fb_page_id")
             and self.fb_page_id
+            and self._fb_access_token is not None
         )
         
         if not has_credentials:
@@ -268,9 +318,21 @@ class SocialMediaManager:
         ):
             # Return cached validation result if we checked recently
             return self._fb_token_valid
+        
+        # Check if token has an expiration time and is expired based on that
+        if self._fb_token_expires_at:
+            try:
+                expiry_date = datetime.fromisoformat(self._fb_token_expires_at)
+                if datetime.now() > expiry_date:
+                    logging.warning(f"⚠️ Facebook token has expired based on stored expiration date")
+                    self._fb_token_valid = False
+                    return False
+            except (ValueError, TypeError) as e:
+                # If we can't parse the expiration date, continue with regular checks
+                logging.warning(f"⚠️ Unable to parse token expiration date: {e}")
             
         # Don't try to schedule async validation from here
-        # Just assume credentials are valid for now
+        # Just assume credentials are valid for now based on our stored data
         # They'll be fully validated on first use
         
         # Return true if we have credentials, even if we haven't validated the token yet
@@ -858,22 +920,25 @@ class SocialMediaManager:
             track: TrackInfo object containing track information
         """
         if not self.publish_enabled:
-            logging.debug("⚠️ Social media publishing is disabled!")
+            logging.debug("⚠️ Social media publishing is disabled globally!")
             return
 
         updates = {
-            "Last.FM": self.update_lastfm,
+            "LastFM": self.update_lastfm,
             "ListenBrainz": self.update_listenbrainz,
             "Bluesky": self.update_bluesky,
             "Facebook": self.update_facebook,
         }
 
         for platform, update_func in updates.items():
-            if platform not in self.disabled_services:
+            if self.service_enabled.get(platform, False):
                 try:
+                    logging.debug(f"Updating {platform}...")
                     await update_func(track)
                 except Exception as e:
                     logging.error(f"💥 Error updating {platform}: {e}")
+            else:
+                logging.debug(f"Skipping {platform} (disabled in config)")
 
     def update_from_config(self):
         """Update manager settings from current configuration.
@@ -890,17 +955,20 @@ class SocialMediaManager:
             "publish_exceptions", "publish_socials", fallback=True
         )
         
-        # Update disabled services
-        disabled_str = self.config.get(
-            "publish_exceptions", "disable_services", fallback=""
-        ).strip()
+        # Update service-specific enabled states
+        self.service_enabled = {
+            "LastFM": self.config.getboolean("lastfm", "enabled", fallback=False),
+            "ListenBrainz": self.config.getboolean("listenbrainz", "enabled", fallback=False),
+            "Bluesky": self.config.getboolean("bluesky", "enabled", fallback=False),
+            "Facebook": self.config.getboolean("facebook", "enabled", fallback=False)
+        }
         
-        if not disabled_str or disabled_str.lower() == "none":
-            self.disabled_services = []
+        # Log changes
+        enabled_services = [name for name, enabled in self.service_enabled.items() if enabled]
+        if enabled_services:
+            logging.info(f"✅ Enabled services after config reload: {', '.join(enabled_services)}")
         else:
-            self.disabled_services = [
-                s.strip() for s in disabled_str.split(",") if s.strip()
-            ]
+            logging.info("⚠️ No social media services are enabled after config reload")
         
         # Update analytics settings
         if hasattr(self, "analytics"):
@@ -945,10 +1013,18 @@ class SocialMediaManager:
                     logging.warning(f"⚠️ Facebook token will expire in {days_remaining} days - consider refreshing")
                     # Auto-refresh the token if needed
                     if days_remaining <= 3:
-                        logging.info("🔄 Attempting to auto-refresh Facebook token...")
+                        auto_renew_date = expiry_date - timedelta(days=3)
+                        logging.info(f"🔄 Attempting to auto-refresh Facebook token (token expires in {days_remaining} days)")
+                        logging.debug(f"Token auto-renewal triggered: Current time {datetime.now().isoformat()}, expiration date {expiry_date.isoformat()}, threshold 3 days")
+                        
                         if await self._refresh_facebook_token():
                             logging.info("✅ Facebook token auto-refreshed successfully")
                             return True
+                        else:
+                            logging.warning("⚠️ Automatic token refresh attempt failed - manual refresh may be required")
+                    else:
+                        logging.debug(f"Token expiration warning: {days_remaining} days left, but not yet eligible for auto-renewal (threshold: 3 days)")
+                    
                     
             return True
         except Exception as e:
@@ -961,9 +1037,6 @@ class SocialMediaManager:
         Returns:
             True if token was refreshed successfully, False otherwise
         """
-        if not hasattr(self, "facebook") or self.facebook is None:
-            return False
-            
         try:
             # Facebook Graph API method to extend token lifetime
             # This requires app_id and app_secret to be available
@@ -971,11 +1044,18 @@ class SocialMediaManager:
                 logging.warning("⚠️ Cannot refresh Facebook token: app_id or app_secret missing")
                 return False
                 
-            # Exchange short-lived token for a long-lived one
+            # Get app credentials
             app_id = self.config["facebook"]["app_id"]
             app_secret = self.config["facebook"]["app_secret"]
-            current_token = self.config["facebook"]["access_token"]
             
+            # Get current token - either from instance variable or try to load from database
+            current_token = self._fb_access_token
+            
+            # If we don't have a token yet, we can't refresh - need to generate a new one
+            if not current_token:
+                logging.warning("⚠️ No Facebook token available to refresh")
+                return False
+                
             # Use the OAuth framework to exchange tokens
             import requests
             
@@ -996,13 +1076,8 @@ class SocialMediaManager:
                 # Update the token in memory
                 self.facebook = GraphAPI(new_token)
                 
-                # Store the token in database
+                # Store the token in database only
                 await self._store_facebook_token(new_token, result.get("expires_in"))
-                
-                # Update the config.ini file with the new token
-                if hasattr(self, "config") and hasattr(self.config, "update_option"):
-                    self.config.update_option("facebook", "access_token", new_token)
-                    logging.info(f"✅ Updated config file with new Facebook token")
                 
                 # Validate the new token to get its details
                 token_info = await self._validate_facebook_token_info(new_token)
@@ -1029,7 +1104,7 @@ class SocialMediaManager:
             return False
             
     async def _store_facebook_token(self, access_token, expires_in=None):
-        """Store a Facebook token in the database.
+        """Store a Facebook token in the database. Only keeps the latest token.
         
         Args:
             access_token: The access token to store
@@ -1043,51 +1118,73 @@ class SocialMediaManager:
             return False
             
         try:
-            # Create the table if it doesn't exist
+            # Calculate expiration time if provided
+            created_at = datetime.now().isoformat()
+            expires_at = None
+            if expires_in:
+                expires_at = (datetime.now() + timedelta(seconds=expires_in)).isoformat()
+            
+            # Store metadata with app and page info
+            import json
+            metadata = json.dumps({
+                "app_id": self.config["facebook"].get("app_id", ""),
+                "page_id": self.config["facebook"].get("page_id", "")
+            })
+            
             with self.db_manager._get_connection() as conn:
-                conn.execute("""
-                CREATE TABLE IF NOT EXISTS facebook_tokens (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    token_type TEXT NOT NULL,
-                    access_token TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    expires_at TEXT,
-                    metadata TEXT
-                )
-                """)
-                
-                # Check if token is already in the database
+                # First, check if this exact token already exists
                 cursor = conn.execute(
-                    "SELECT COUNT(*) FROM facebook_tokens WHERE access_token = ?",
+                    "SELECT id FROM facebook_tokens WHERE access_token = ?",
                     (access_token,)
                 )
-                count = cursor.fetchone()[0]
+                existing_token = cursor.fetchone()
                 
-                if count > 0:
-                    logging.debug("Token already exists in database")
-                    return True
+                if existing_token:
+                    # Update the existing token's expiration and metadata
+                    conn.execute(
+                        """UPDATE facebook_tokens SET 
+                           expires_at = ?, 
+                           created_at = ?,
+                           metadata = ? 
+                           WHERE id = ?""",
+                        (expires_at, created_at, metadata, existing_token[0])
+                    )
+                    logging.debug(f"Updated existing Facebook token in database (expires: {expires_at or 'unknown'})")
+                else:
+                    # Insert the new token
+                    conn.execute(
+                        "INSERT INTO facebook_tokens (access_token, created_at, expires_at, metadata) VALUES (?, ?, ?, ?)",
+                        (access_token, created_at, expires_at, metadata)
+                    )
+                    logging.info(f"✅ Stored new Facebook token in database (expires: {expires_at or 'unknown'})")
                 
-                # Calculate expiration time if provided
-                created_at = datetime.now().isoformat()
-                expires_at = None
-                if expires_in:
-                    expires_at = (datetime.now() + timedelta(seconds=expires_in)).isoformat()
+                # Update instance variables
+                self._fb_access_token = access_token
+                self._fb_token_expires_at = expires_at
+                self._fb_token_valid = True
+                self._last_fb_token_validation = time.time()
                 
-                # Store token info as JSON
-                import json
-                metadata = json.dumps({
-                    "app_id": self.config["facebook"].get("app_id", ""),
-                    "page_id": self.config["facebook"].get("page_id", "")
-                })
+                # Log detailed expiration information for debugging
+                if expires_at:
+                    try:
+                        expiry_date = datetime.fromisoformat(expires_at)
+                        days_remaining = (expiry_date - datetime.now()).days
+                        
+                        # Determine when auto-renewal will occur (3 days threshold)
+                        auto_renew_date = expiry_date - timedelta(days=3)
+                        auto_renew_days = days_remaining - 3
+                        
+                        logging.debug(
+                            f"🔑 New Facebook token stored: {days_remaining} days until expiration "
+                            f"(expires: {expiry_date.isoformat()}). "
+                            f"Auto-renewal will trigger in {auto_renew_days} days "
+                            f"(on {auto_renew_date.strftime('%Y-%m-%d')})"
+                        )
+                    except (ValueError, TypeError) as e:
+                        logging.debug(f"New Facebook token stored, but expiration date could not be parsed: {expires_at}")
+                else:
+                    logging.debug(f"New Facebook token stored (no expiration date available)")
                 
-                # Insert the new token
-                conn.execute(
-                    "INSERT INTO facebook_tokens (token_type, access_token, created_at, expires_at, metadata) VALUES (?, ?, ?, ?, ?)",
-                    ("page", access_token, created_at, expires_at, metadata)
-                )
-                conn.commit()
-                
-                logging.info(f"✅ Stored Facebook token in database (expires: {expires_at or 'unknown'})")
                 return True
                 
         except Exception as e:
@@ -1106,13 +1203,13 @@ class SocialMediaManager:
         if not self.config.has_section("facebook"):
             return {"valid": False, "error": "No Facebook configuration"}
             
-        current_token = self.config["facebook"].get("access_token")
-        if not current_token:
-            return {"valid": False, "error": "No access token in configuration"}
+        # Use the in-memory token instead of looking in config
+        if not self._fb_access_token:
+            return {"valid": False, "error": "No access token available"}
             
         try:
             # Validate the token
-            token_info = await self._validate_facebook_token_info(current_token)
+            token_info = await self._validate_facebook_token_info()
             if not token_info:
                 return {"valid": False, "error": "Failed to validate token"}
                 
@@ -1188,16 +1285,16 @@ class SocialMediaManager:
         """Get validation information for a Facebook access token.
         
         Args:
-            access_token: The token to validate (defaults to current token)
+            access_token: The token to validate (defaults to current token from instance)
             
         Returns:
             Dictionary with token information or None if validation failed
         """
         if access_token is None:
-            if not self.config.has_section("facebook"):
-                return None
-            access_token = self.config["facebook"].get("access_token")
+            # Use instance variable as the source of truth
+            access_token = self._fb_access_token
             if not access_token:
+                logging.warning("⚠️ No Facebook token available for validation")
                 return None
         
         try:
@@ -1245,16 +1342,16 @@ class SocialMediaManager:
             return
 
         try:
-            # For now, we'll implement Bluesky engagement checking
+            # Check Bluesky engagement if enabled
             if (
-                "Bluesky" not in self.disabled_services
+                self.service_enabled.get("Bluesky", False)
                 and self.bluesky_credentials_valid()
             ):
                 await self._check_bluesky_engagement()
                 
-            # Add Facebook engagement checking
+            # Check Facebook engagement if enabled
             if (
-                "Facebook" not in self.disabled_services
+                self.service_enabled.get("Facebook", False)
                 and self.facebook_credentials_valid()
             ):
                 await self._check_facebook_engagement()
@@ -1459,7 +1556,7 @@ class SocialMediaManager:
             # Get platform stats
             platform_stats = {}
             for platform in ["Bluesky", "Facebook"]:
-                if platform not in self.disabled_services:
+                if self.service_enabled.get(platform, False):
                     platform_stats[platform] = await self.analytics.get_platform_stats(
                         platform, days=days
                     )
