@@ -839,41 +839,162 @@ class SocialMediaManager:
             return False
 
         try:
-            # Generate post content
-            # In the future, this could be enhanced with AI content similar to Bluesky
-            message = f"Now Playing on Now Wave Radio:\n{track.artist} - {track.title}"
-            if track.album:
-                message += f"\nAlbum: {track.album}"
-            if track.program:
-                message += f"\nProgram: {track.program}"
-            if track.presenter:
-                message += f"\nPresenter: {track.presenter}"
+            # Generate post text based on track info
+            content_source = "standard"
+            source_details = "basic"
 
-            post_data = {
-                "message": message
-            }
-            
-            # Add image if enabled and available
-            if self.fb_enable_images and track.image:
-                # Get full path to processed artwork
-                artwork_path = self.artwork_manager.publish_dir / track.image
-                if artwork_path.exists():
+            if self.fb_enable_ai:
+                post_text, content_metadata = await self.content_generator.generate_track_description(track)
+                content_source = content_metadata.get("source_type", "unknown")
+                if content_source == "ai":
+                    source_details = content_metadata.get("prompt_name", "unknown")
+                else:
+                    source_details = content_metadata.get("template_name", "unknown")
+            else:
+                # Use standard text if AI is disabled
+                post_text = f"🎵 Now Playing on Now Wave Radio:\n{track.artist} - {track.title}"
+                if track.album:
+                    post_text += f"\nFrom the album: {track.album}"
+                if track.program:
+                    post_text += f"\nProgram: {track.program}"
+                if track.presenter:
+                    post_text += f"\nPresenter: {track.presenter}"
+
+            # Generate system hashtags - pass content source info
+            is_ai_content = content_source == "ai"
+            system_hashtags = self.content_generator.generate_hashtags(
+                track, is_ai_content=is_ai_content
+            )
+
+            # Add show name as final hashtag if it exists and isn't already included
+            if track.program and track.program.strip():
+                # Create proper show hashtag
+                show_hashtag = "#" + "".join(
+                    word.capitalize() for word in track.program.strip().split()
+                )
+                # Only add if not already in hashtags
+                if show_hashtag not in system_hashtags:
+                    system_hashtags = system_hashtags + " " + show_hashtag
+
+            # Helper function to remove duplicate hashtags while preserving order
+            def deduplicate_hashtags(hashtag_str: str) -> str:
+                if not hashtag_str.strip():
+                    return ""
+
+                # Split by spaces, keeping only unique hashtags (preserving order)
+                seen = set()
+                unique_hashtags = []
+
+                for tag in hashtag_str.split():
+                    # Skip empty tags
+                    if not tag.strip():
+                        continue
+
+                    # Normalize the tag to lowercase for comparison
+                    tag_lower = tag.lower()
+
+                    # Only add if we haven't seen this tag before
+                    if tag_lower not in seen:
+                        seen.add(tag_lower)
+                        unique_hashtags.append(tag)
+
+                # Return space-separated hashtags
+                return " ".join(unique_hashtags)
+
+            # Process hashtags based on content source
+            if is_ai_content:
+                # If AI content has "\n\n#" pattern, deduplicate the hashtags
+                if "\n\n#" in post_text:
+                    main_content, ai_hashtags = post_text.split("\n\n#", 1)
+                    deduplicated_hashtags = deduplicate_hashtags(
+                        "#" + ai_hashtags.strip()
+                    )
+                    if deduplicated_hashtags:
+                        post_text = main_content.strip() + f"\n\n{deduplicated_hashtags}"
+                    else:
+                        post_text = main_content.strip()
+                else:
+                    # Ensure the post text is properly trimmed
+                    post_text = post_text.strip()
+            else:
+                # Not AI-generated content - add system hashtags
+                if "\n\n#" in post_text:
+                    # Split post into content and existing hashtags
+                    main_content, existing_hashtags = post_text.split("\n\n#", 1)
+                    # Combine existing hashtags with system hashtags and deduplicate
+                    combined_hashtags = deduplicate_hashtags(
+                        "#" + existing_hashtags.strip() + " " + system_hashtags
+                    )
+                    # Rebuild the post
+                    post_text = main_content.strip() + f"\n\n{combined_hashtags}"
+                else:
+                    # No existing hashtags, add system hashtags if we have any
+                    post_text = post_text.strip()
+                    if system_hashtags:
+                        post_text += f"\n\n{system_hashtags}"
+
+            # Check post length for Facebook's character limit
+            if hasattr(self, "fb_char_limit") and self.fb_char_limit > 0 and len(post_text) > self.fb_char_limit:
+                logging.warning(
+                    f"⚠️ Post too long ({len(post_text)} of {self.fb_char_limit} chars) Trimming hashtags."
+                )
+                # Trim hashtags first if needed
+                if "\n\n" in post_text:
+                    main_content, hashtags = post_text.split("\n\n", 1)
+                    if len(main_content) <= self.fb_char_limit - 10:
+                        # Keep main content and just the first hashtag
+                        first_hashtag = hashtags.split(" ")[0] if " " in hashtags else hashtags
+                        post_text = f"{main_content}\n\n{first_hashtag}"
+                        logging.debug(
+                            f"⚠️ Trimmed hashtags to fit character limit: {post_text}"
+                        )
+                    else:
+                        # Content itself is too long, fallback to a simpler message
+                        post_text = f"🎵 Now Playing on Now Wave Radio:\n{track.artist} - {track.title}"
+                        logging.debug(f"⚠️ Using fallback simple message: {post_text}")
+                else:
+                    # No hashtags to trim, use fallback
+                    post_text = f"🎵 Now Playing on Now Wave Radio:\n{track.artist} - {track.title}"
+                    logging.debug(f"⚠️ Using fallback simple message: {post_text}")
+
+            # Log the complete post text for debugging
+            logging.debug(f"📘 Facebook post content ({len(post_text)} chars): {post_text}")
+
+            # Create embed with image if available
+            post_with_image = False
+            response = None
+            img_width = 0
+            img_height = 0
+
+            if self.fb_enable_images:
+                image_path = None
+                if track.image:
+                    # Get full path to processed artwork
+                    artwork_path = self.artwork_manager.publish_dir / track.image
+                    if artwork_path.exists():
+                        image_path = artwork_path
+
+                # Upload image to Facebook if available
+                if image_path and image_path.exists():
                     try:
-                        # Resize image for Facebook using configured dimensions
+                        # Resize image for social media using configured dimensions
                         temp_resized, dimensions = await self.artwork_manager.resize_for_social(
-                            artwork_path,
+                            image_path,
                             size=(self.fb_image_width, self.fb_image_height),
                         )
-                        upload_path = temp_resized if temp_resized else artwork_path
-                        
+                        upload_path = temp_resized if temp_resized else image_path
+                        img_width, img_height = dimensions
+
                         # Post with image
                         with open(upload_path, "rb") as image_file:
-                            self.facebook.put_photo(
+                            response = await self._facebook_api_call_with_retry(
+                                self.facebook.put_photo,
                                 image=image_file,
-                                message=message,
+                                message=post_text,
                                 album_path=f"{self.fb_page_id}/photos"
                             )
-                        
+                            post_with_image = True
+
                         # Clean up temp file if it exists
                         if temp_resized and temp_resized.exists():
                             try:
@@ -881,36 +1002,61 @@ class SocialMediaManager:
                                 logging.debug(f"🧹 Removed temporary resized image: {temp_resized}")
                             except Exception as clean_err:
                                 logging.warning(f"⚠️ Failed to remove temporary image: {clean_err}")
-                        
-                        logging.debug(f"📒 Updated Facebook with image")
                     except Exception as img_err:
-                        logging.error(f"💥 Error adding image to Facebook post: {img_err}")
-                        # Fall back to text-only post
-                        self.facebook.put_object(
-                            parent_object=self.fb_page_id, connection_name="feed", message=message
-                        )
-                        logging.debug(f"📒 Updated Facebook with text only (image failed)")
-                else:
-                    # No image available, post text only
-                    self.facebook.put_object(
-                        parent_object=self.fb_page_id, connection_name="feed", message=message
-                    )
-                    logging.debug(f"📒 Updated Facebook (no image available)")
-            else:
-                # Images disabled or no image available
-                self.facebook.put_object(
-                    parent_object=self.fb_page_id, connection_name="feed", message=message
-                )
-                logging.debug(f"📒 Updated Facebook")
+                        logging.error(f"💥 Error uploading image to Facebook: {img_err}")
+                        post_with_image = False
 
-            # Track post success in analytics
+            # If no image or image upload failed, post as text only
+            if not post_with_image:
+                response = await self._facebook_api_call_with_retry(
+                    self.facebook.put_object,
+                    parent_object=self.fb_page_id,
+                    connection_name="feed",
+                    message=post_text
+                )
+                logging.debug(f"📘 Posted to Facebook with text only")
+
+            # Extract post ID from response
+            if isinstance(response, dict) and "id" in response:
+                post_id = response["id"]
+                post_url = f"https://facebook.com/{post_id}"
+            else:
+                # Generate synthetic ID for tracking
+                post_id = f"fb_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                post_url = None
+
+            # Track post in analytics
             if hasattr(self, "analytics"):
-                post_id = f"fb_{datetime.now().strftime('%Y%m%d%H%M%S')}"  # Generate a tracking ID
-                await self.analytics.record_post("Facebook", post_id, track, message)
+                await self.analytics.record_post(
+                    platform="Facebook",
+                    post_id=post_id,
+                    track=track,
+                    content=post_text,
+                    post_url=post_url,
+                    has_image=post_with_image
+                )
+
+            # Add detail about content source to log
+            if content_source == "ai":
+                source_log = f"AI content (prompt: {source_details})"
+            else:
+                source_log = f"template content (template: {source_details})"
+
+            # Log at INFO level for operational monitoring
+            if post_with_image:
+                image_info = f"image ({img_width}x{img_height})"
+            else:
+                image_info = "no image"
+
+            logging.info(
+                f"📘 Facebook post created using {source_log} with {image_info}"
+            )
 
             return True
         except Exception as e:
             logging.error(f"💥 Facebook update error: {e}")
+            if hasattr(self, "analytics"):
+                await self.analytics.track_error("Facebook", track, str(e))
             return False
 
     async def update_social_media(self, track: TrackInfo):
@@ -1474,6 +1620,39 @@ class SocialMediaManager:
         except Exception as e:
             logging.error(f"💥 Error checking Bluesky engagement: {e}")
             
+    async def _facebook_api_call_with_retry(self, api_method, *args, **kwargs):
+        """Execute a Facebook API call with retry logic.
+        
+        Args:
+            api_method: The Facebook API method to call
+            *args: Positional arguments to pass to the method
+            **kwargs: Keyword arguments to pass to the method
+            
+        Returns:
+            API response or None on failure
+        """
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                return api_method(*args, **kwargs)
+            except Exception as e:
+                if "rate limit" in str(e).lower():
+                    # Rate limit hit
+                    wait_time = retry_delay * (2 ** attempt)
+                    logging.warning(f"⚠️ Facebook rate limit hit, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                elif attempt < max_retries - 1:
+                    # Other error, retry
+                    logging.warning(f"⚠️ Facebook API error, retrying: {e}")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    # Final attempt failed
+                    raise
+        
+        return None
+
     async def _check_facebook_engagement(self):
         """Check engagement metrics for recent Facebook posts."""
         try:
@@ -1491,49 +1670,65 @@ class SocialMediaManager:
             cutoff_date = (datetime.now() - timedelta(days=7)).isoformat()
 
             with self.db_manager._get_connection() as conn:
-                # Get both post_id and internal ID 
+                # Get post_id for real Facebook posts (not synthetic IDs) 
                 cursor = conn.execute(
-                    "SELECT id, post_id FROM social_media_posts WHERE platform = ? AND posted_at > ? AND deleted = 0",
+                    "SELECT post_id FROM social_media_posts WHERE platform = ? AND posted_at > ? AND deleted = 0 AND NOT post_id LIKE 'fb_%'",
                     ("Facebook", cutoff_date),
                 )
-                posts = [(row[0], row[1]) for row in cursor.fetchall()]
+                post_ids = [row[0] for row in cursor.fetchall()]
                 
-            # Special note: For Facebook, we're generating our own post_ids in the format:
-            # fb_{timestamp} since we're not getting real IDs from the API currently.
-            # In the future, we could extract real post IDs from the Facebook API response.
-            
-            # In a real implementation, we would query Facebook's Graph API to get
-            # actual engagement metrics. For now, we'll use dummy values just to
-            # demonstrate the analytics integration.
-            
-            import random
-            
-            for internal_id, post_id in posts:
+            # Process actual Facebook posts (non-synthetic IDs)
+            for post_id in post_ids:
                 try:
-                    # TODO: In Phase 3, implement actual Facebook engagement API calls
-                    # This is a placeholder implementation
-                    
-                    # Simulate engagement metrics
-                    likes = random.randint(0, 10)
-                    shares = random.randint(0, 3)
-                    comments = random.randint(0, 5)
-                    
-                    # Update analytics
-                    await self.analytics.update_engagement(
-                        "Facebook",
-                        post_id,
-                        {
-                            "likes": likes,
-                            "shares": shares,
-                            "comments": comments,
-                            "clicks": 0,  # Not tracking clicks yet
-                        },
+                    # Get post engagement metrics from Facebook API
+                    engagement = await self._facebook_api_call_with_retry(
+                        self.facebook.get_object,
+                        id=post_id,
+                        fields="reactions.summary(true),shares,comments.summary(true)"
                     )
                     
-                    logging.debug(f"📊 Updated Facebook engagement for post {post_id}")
-                    
+                    if engagement:
+                        # Extract metrics, using 0 for missing values
+                        likes = engagement.get("reactions", {}).get("summary", {}).get("total_count", 0)
+                        shares = engagement.get("shares", {}).get("count", 0) if "shares" in engagement else 0
+                        comments = engagement.get("comments", {}).get("summary", {}).get("total_count", 0)
+                        
+                        # Update analytics
+                        await self.analytics.update_engagement(
+                            "Facebook",
+                            post_id,
+                            {
+                                "likes": likes,
+                                "shares": shares,
+                                "comments": comments,
+                                "clicks": 0,  # Facebook doesn't provide click data
+                            },
+                        )
+                        
+                        logging.debug(f"📊 Updated Facebook engagement for post {post_id}: {likes} likes, {shares} shares, {comments} comments")
                 except Exception as post_error:
-                    logging.warning(f"⚠️ Error checking Facebook post {post_id}: {post_error}")
+                    error_str = str(post_error).lower()
+                    # Check if post was deleted or not found
+                    if "(#100)" in error_str or "not found" in error_str or "does not exist" in error_str:
+                        logging.info(f"🗑️ Facebook post {post_id} not found (likely deleted)")
+                        await self.analytics.mark_post_as_deleted("Facebook", post_id)
+                    else:
+                        logging.warning(f"⚠️ Error checking Facebook post {post_id}: {post_error}")
+                        # Still update engagement with zeros to avoid missing data
+                        try:
+                            await self.analytics.update_engagement(
+                                "Facebook",
+                                post_id,
+                                {
+                                    "likes": 0,
+                                    "shares": 0,
+                                    "comments": 0,
+                                    "clicks": 0,
+                                },
+                            )
+                            logging.debug(f"📊 Set zero engagement for Facebook post {post_id} due to API error")
+                        except Exception as analytics_error:
+                            logging.error(f"💥 Error updating engagement for Facebook post {post_id}: {analytics_error}")
         except Exception as e:
             logging.error(f"💥 Error checking Facebook engagement: {e}")
 
