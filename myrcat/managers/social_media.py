@@ -188,15 +188,23 @@ class SocialMediaManager:
                                     days_remaining = (expiry_date - datetime.now()).days
                                     
                                     # Determine when auto-renewal will occur (3 days threshold)
+                                    # Calculate days until auto-renewal (when 3 days remain until expiration)
+                                    # If expiry_date is May 29, and today is Mar 31, then:
+                                    # days_remaining = 58 days, and we want auto-renewal when 3 days remain
+                                    # so auto_renewal happens in (58-3) = 55 days
                                     auto_renew_date = expiry_date - timedelta(days=3)
-                                    auto_renew_days = days_remaining - 3
+                                    auto_renew_days = max(0, days_remaining - 3)
                                     
+                                    # Log at DEBUG level for detailed information
                                     logging.debug(
                                         f"🔑 Facebook token status: {days_remaining} days until expiration "
                                         f"(expires: {expiry_date.isoformat()}). "
                                         f"Auto-renewal will trigger in {auto_renew_days} days "
                                         f"(on {auto_renew_date.strftime('%Y-%m-%d')})"
                                     )
+                                    
+                                    # Log at INFO level for more visibility
+                                    logging.info(f"🔑 Facebook token status: {days_remaining} days until expiration")
                                     
                                     if days_remaining <= 7:
                                         logging.warning(f"⚠️ Facebook token will expire soon! Only {days_remaining} days remaining")
@@ -236,6 +244,7 @@ class SocialMediaManager:
             
             # Log status
             if self.facebook:
+                # Log configuration at DEBUG level
                 logging.debug(
                     f"Facebook initialized for page: {self.fb_page_id} "
                     f"(images: {'enabled' if self.fb_enable_images else 'disabled'}, "
@@ -243,6 +252,17 @@ class SocialMediaManager:
                     f"image size: {self.fb_image_width}x{self.fb_image_height}, "
                     f"testing mode: {'enabled' if self.fb_testing_mode else 'disabled'})"
                 )
+                
+                # Log token availability at INFO level
+                if self._fb_token_expires_at:
+                    try:
+                        expiry_date = datetime.fromisoformat(self._fb_token_expires_at)
+                        days_remaining = (expiry_date - datetime.now()).days
+                        logging.info(f"🔑 Facebook token status: {days_remaining} days until expiration")
+                    except (ValueError, TypeError):
+                        logging.info(f"🔑 Facebook token available (expiration date unknown)")
+                else:
+                    logging.info(f"🔑 Facebook token available (no expiration date)")
                 
                 if self.fb_testing_mode:
                     logging.warning(
@@ -1146,9 +1166,10 @@ class SocialMediaManager:
                 
                 if days_remaining <= 7:
                     logging.warning(f"⚠️ Facebook token will expire in {days_remaining} days - consider refreshing")
-                    # Auto-refresh the token if needed
+                    # Auto-refresh the token if needed (when ≤ 3 days remain)
                     if days_remaining <= 3:
-                        auto_renew_date = expiry_date - timedelta(days=3)
+                        # This date is just for logging purposes (when auto-renewal should happen)
+                        auto_renew_date = datetime.now()  # It's happening now as we're within the threshold
                         logging.info(f"🔄 Attempting to auto-refresh Facebook token (token expires in {days_remaining} days)")
                         logging.debug(f"Token auto-renewal triggered: Current time {datetime.now().isoformat()}, expiration date {expiry_date.isoformat()}, threshold 3 days")
                         
@@ -1306,15 +1327,20 @@ class SocialMediaManager:
                         days_remaining = (expiry_date - datetime.now()).days
                         
                         # Determine when auto-renewal will occur (3 days threshold)
+                        # Calculate when we'll auto-renew (3 days before expiration)
                         auto_renew_date = expiry_date - timedelta(days=3)
-                        auto_renew_days = days_remaining - 3
+                        auto_renew_days = max(0, days_remaining - 3)
                         
+                        # Log at DEBUG level with detailed info
                         logging.debug(
                             f"🔑 New Facebook token stored: {days_remaining} days until expiration "
                             f"(expires: {expiry_date.isoformat()}). "
                             f"Auto-renewal will trigger in {auto_renew_days} days "
                             f"(on {auto_renew_date.strftime('%Y-%m-%d')})"
                         )
+                        
+                        # Log at INFO level for more visibility
+                        logging.info(f"🔑 New Facebook token stored: {days_remaining} days until expiration")
                     except (ValueError, TypeError) as e:
                         logging.debug(f"New Facebook token stored, but expiration date could not be parsed: {expires_at}")
                 else:
