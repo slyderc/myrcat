@@ -66,51 +66,48 @@ class SocialMediaAnalytics:
             logging.info(f"⛔️ Social media analytics disabled")
         
     def ensure_tables(self) -> None:
-        """Ensure analytics tables exist in the database."""
+        """Verify analytics tables exist in the database."""
         try:
             with self.db._get_connection() as conn:
-                # Create table for post tracking
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS social_media_posts (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        platform TEXT NOT NULL,
-                        post_id TEXT NOT NULL,
-                        track_id INTEGER,
-                        posted_at DATETIME NOT NULL,
-                        message TEXT,
-                        deleted INTEGER DEFAULT 0,
-                        FOREIGN KEY (track_id) REFERENCES playouts(id)
-                    )
-                """)
+                # Verify analytics tables exist
+                cursor = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('social_media_posts', 'social_media_engagement')"
+                )
+                tables = [row[0] for row in cursor.fetchall()]
                 
-                # Create table for engagement metrics
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS social_media_engagement (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        post_id INTEGER NOT NULL,
-                        checked_at DATETIME NOT NULL,
-                        likes INTEGER DEFAULT 0,
-                        shares INTEGER DEFAULT 0,
-                        comments INTEGER DEFAULT 0,
-                        clicks INTEGER DEFAULT 0,
-                        FOREIGN KEY (post_id) REFERENCES social_media_posts(id)
-                    )
-                """)
+                if len(tables) < 2:
+                    missing = []
+                    if 'social_media_posts' not in tables:
+                        missing.append('social_media_posts')
+                    if 'social_media_engagement' not in tables:
+                        missing.append('social_media_engagement')
+                        
+                    logging.error(f"💥 Missing required tables: {', '.join(missing)}")
+                    logging.error("💥 Please initialize the database with schema.sql")
+                    
+                # Verify indexes exist
+                cursor = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_posts_platform', 'idx_engagement_post_id')"
+                )
+                indexes = [row[0] for row in cursor.fetchall()]
                 
-                # Create index for faster queries
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_posts_platform ON social_media_posts (platform, post_id)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_engagement_post_id ON social_media_engagement (post_id)")
+                if len(indexes) < 2:
+                    logging.warning("⚠️ Analytics indexes may be missing. Performance could be affected.")
+                    
         except Exception as e:
-            logging.error(f"💥 Error creating analytics tables: {e}")
+            logging.error(f"💥 Error verifying analytics tables: {e}")
     
-    async def record_post(self, platform: str, post_id: str, track: TrackInfo, message: str) -> Optional[int]:
+    async def record_post(self, platform: str, post_id: str, track: TrackInfo, content: str, 
+                      post_url: str = None, has_image: bool = False) -> Optional[int]:
         """Record a social media post for tracking.
         
         Args:
             platform: Social media platform name
             post_id: Platform-specific post ID
             track: TrackInfo object for the posted track
-            message: Content of the post
+            content: Content of the post
+            post_url: URL to the post (optional)
+            has_image: Whether the post has an image (optional)
             
         Returns:
             Internal post ID if successful, None otherwise
@@ -126,14 +123,18 @@ class SocialMediaAnalytics:
             
             with self.db._get_connection() as conn:
                 # Log the full message for debugging
-                message_preview = message[:50] + "..." if len(message) > 50 else message
-                logging.debug(f"📊 Recording {platform} post: {post_id} with message: {message_preview}")
+                content_preview = content[:50] + "..." if len(content) > 50 else content
+                logging.debug(f"📊 Recording {platform} post: {post_id} with content: {content_preview}")
                 
+                # Convert boolean has_image to integer
+                has_image_int = 1 if has_image else 0
+                
+                # Insert with the new schema that includes post_url and has_image
                 cursor = conn.execute(
                     """
                     INSERT INTO social_media_posts (
-                        platform, post_id, track_id, posted_at, message
-                    ) VALUES (?, ?, ?, ?, ?)
+                        platform, post_id, track_id, posted_at, message, post_url, has_image
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     RETURNING id
                     """,
                     (
@@ -141,7 +142,9 @@ class SocialMediaAnalytics:
                         post_id,
                         track_id,
                         datetime.now().isoformat(),
-                        message
+                        content,
+                        post_url,
+                        has_image_int
                     )
                 )
                 result = cursor.fetchone()
@@ -277,6 +280,32 @@ class SocialMediaAnalytics:
                     return False
         except Exception as e:
             logging.error(f"💥 Error marking post as deleted: {e}")
+            return False
+            
+    async def track_error(self, platform: str, track: TrackInfo, error_message: str) -> bool:
+        """Track an error that occurred during social media posting.
+        
+        Args:
+            platform: Social media platform name
+            track: TrackInfo object for the track that was being posted
+            error_message: Error message or description
+            
+        Returns:
+            True if successfully tracked, False otherwise
+        """
+        if not self.enabled:
+            return False
+            
+        try:
+            # Log the error with proper emoji categorization
+            logging.error(f"💥 {platform} error with track [{track.artist} - {track.title}]: {error_message}")
+            
+            # For now, we just log the error but don't store it in the database
+            # In the future, we could add a social_media_errors table
+            
+            return True
+        except Exception as e:
+            logging.error(f"💥 Error tracking error (meta-error): {e}")
             return False
             
     async def get_top_tracks(self, days: int = 30, limit: int = 10) -> List[Dict[str, Any]]:

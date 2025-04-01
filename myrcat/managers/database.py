@@ -34,31 +34,39 @@ class DatabaseManager:
         self.setup_database()
 
     def setup_database(self):
-        """Initialize database schema if not exists."""
+        """Verify database schema is compatible with current version."""
         try:
+            # Expected schema version - update this when schema.sql changes
+            EXPECTED_VERSION = 1
+            
             with self._get_connection() as conn:
-                conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS playouts (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        artist TEXT NOT NULL,
-                        title TEXT NOT NULL,
-                        album TEXT,
-                        year INTEGER,
-                        publisher TEXT,
-                        isrc TEXT,
-                        starttime TEXT,
-                        duration INTEGER,
-                        media_id TEXT,
-                        program TEXT,
-                        presenter TEXT,
-                        timestamp DATETIME NOT NULL
-                    )
-                """
+                # Check if version table exists
+                cursor = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='db_version'"
                 )
+                if not cursor.fetchone():
+                    logging.warning("⚠️ Database schema version table not found!")
+                    logging.warning("⚠️ Please initialize the database with schema.sql")
+                    raise DatabaseError("Database schema not initialized correctly. Run: cat schema.sql | sqlite3 myrcat.db")
+                
+                # Check version
+                cursor = conn.execute("SELECT version FROM db_version WHERE id = 1")
+                result = cursor.fetchone()
+                if not result:
+                    logging.warning("⚠️ Database version record not found!")
+                    raise DatabaseError("Database version information missing. Run: cat schema.sql | sqlite3 myrcat.db")
+                
+                db_version = result[0]
+                if db_version != EXPECTED_VERSION:
+                    logging.error(f"💥 Database schema version mismatch! Expected: {EXPECTED_VERSION}, Found: {db_version}")
+                    logging.error("💥 Please update your database schema with the latest schema.sql file")
+                    raise DatabaseError(f"Database schema version mismatch. Expected v{EXPECTED_VERSION}, found v{db_version}")
+                
+                logging.debug(f"✅ Database schema version {db_version} verified")
+                
         except sqlite3.Error as e:
             logging.error(f"💥 Database setup error: {e}")
-            raise DatabaseError(f"Failed to setup database: {e}")
+            raise DatabaseError(f"Failed to verify database schema: {e}")
 
     def _get_connection(self):
         """Get a SQLite database connection.

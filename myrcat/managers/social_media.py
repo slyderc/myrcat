@@ -161,20 +161,9 @@ class SocialMediaManager:
             self._fb_access_token = None
             self._fb_token_expires_at = None
             
-            # Configure and create token database table if it doesn't exist
+            # Load Facebook token from database
             if hasattr(self, "db_manager") and self.db_manager:
                 with self.db_manager._get_connection() as conn:
-                    # Simplified token table - only stores the current token
-                    conn.execute("""
-                    CREATE TABLE IF NOT EXISTS facebook_tokens (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        access_token TEXT NOT NULL,
-                        created_at TEXT NOT NULL,
-                        expires_at TEXT,
-                        metadata TEXT
-                    )
-                    """)
-                    
                     # Try to load the most recent token
                     cursor = conn.execute("""
                         SELECT access_token, expires_at 

@@ -75,18 +75,9 @@ async def main():
             print("✅ Facebook tokens table exists in database")
         else:
             print("❌ Facebook tokens table not found")
-            # Create the table explicitly
-            conn.execute("""
-            CREATE TABLE IF NOT EXISTS facebook_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                token_type TEXT NOT NULL,
-                access_token TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT,
-                metadata TEXT
-            )
-            """)
-            print("✅ Created Facebook tokens table")
+            print("⚠️ Please initialize the database with schema.sql")
+            print("⚠️ Run: cat schema.sql | sqlite3 myrcat.db")
+            return 1
     
     # Step 2: Check current token status
     print("\n=== Checking Facebook Token Status ===")
