@@ -102,8 +102,9 @@ class ResearchManager:
         else:
             logging.info("⛔️ Artist research disabled")
 
-        # Run initial cache cleanup
-        asyncio.create_task(self._cleanup_cache())
+        # Don't run initial cache cleanup in __init__
+        # It will be handled by the first process_track call
+        self.last_cleanup = None
 
     async def _cleanup_cache(self) -> None:
         """Clean up expired entries from the image search cache and orphaned image files.
@@ -259,6 +260,9 @@ class ResearchManager:
 
         except Exception as e:
             logging.error(f"💥 Error processing artist research: {e}")
+
+        # Run cache cleanup after processing each track
+        asyncio.create_task(self._cleanup_cache())
 
     async def _process_artist_image(
         self, artist: str, title: str, artist_hash: str
