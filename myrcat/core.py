@@ -17,6 +17,8 @@ from myrcat.managers.playlist import PlaylistManager
 from myrcat.managers.history import HistoryManager
 from myrcat.managers.social_media import SocialMediaManager
 from myrcat.managers.show import ShowHandler
+from myrcat.managers.content import ContentGenerator
+from myrcat.managers.research import ResearchManager
 
 
 class Myrcat:
@@ -122,8 +124,17 @@ class Myrcat:
                 self.artwork_cache_dir,
                 self.default_artwork_path,
             )
+
+            # Initialize content generator for AI content
+            self.content_generator = ContentGenerator(self.config_parser)
+
             self.social = SocialMediaManager(self.config_parser, self.artwork, self.db)
             self.show_handler = ShowHandler(self.config_parser)
+
+            # Initialize research manager
+            self.research = ResearchManager(
+                self.config_parser, self.db, self.content_generator
+            )
 
             # Create server
             self.server = MyriadServer(
@@ -155,6 +166,11 @@ class Myrcat:
             if hasattr(self, "show_handler"):
                 self.show_handler.load_config()
                 logging.debug(f"🔄 Updated show handler with new configuration")
+
+            # Update research manager
+            if hasattr(self, "research"):
+                self.research.load_config()
+                logging.debug(f"🔄 Updated research manager with new configuration")
 
     def _apply_config_changes(self):
         """Apply configuration changes to all components.
@@ -371,6 +387,9 @@ class Myrcat:
                 await self.playlist.update_track(track, artwork_hash)
                 await self.history.add_track(track, artwork_hash)
                 await self.show_handler.check_show_transition(track)
+
+                # Process artist research
+                await self.research.process_track(track)
 
                 # Social media posting (unless skipped)
                 if self.should_skip_track(track.title, track.artist):
