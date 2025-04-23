@@ -248,7 +248,7 @@ class ResearchManager:
 
                     # Find and store artist image
                     image_filename = await self._process_artist_image(
-                        track.artist, artist_hash
+                        track.artist, track.title, artist_hash
                     )
                     if image_filename:
                         await self._update_research_image(artist_hash, image_filename)
@@ -261,12 +261,13 @@ class ResearchManager:
             logging.error(f"💥 Error processing artist research: {e}")
 
     async def _process_artist_image(
-        self, artist: str, artist_hash: str
+        self, artist: str, title: str, artist_hash: str
     ) -> Optional[str]:
         """Process artist image research and storage.
 
         Args:
             artist: Artist name
+            title: Title of the track
             artist_hash: Hash value for the artist
 
         Returns:
@@ -274,7 +275,7 @@ class ResearchManager:
         """
         try:
             # Get image search query from LLM
-            search_info = await self._get_image_search_query(artist)
+            search_info = await self._get_image_search_query(artist, title)
             if not search_info:
                 return None
 
@@ -297,7 +298,9 @@ class ResearchManager:
             logging.error(f"💥 Error processing artist image: {e}")
             return None
 
-    async def _get_image_search_query(self, artist: str) -> Optional[Tuple[str, str]]:
+    async def _get_image_search_query(
+        self, artist: str, title: str
+    ) -> Optional[Tuple[str, str]]:
         """Get optimized image search query from LLM.
 
         Args:
@@ -317,7 +320,7 @@ class ResearchManager:
                 prompt_template = f.read()
 
             # Format the prompt with artist info
-            prompt = prompt_template.format(artist=artist)
+            prompt = prompt_template.format(artist=artist, title=title)
 
             # Generate search query content
             response = await self.content_generator.generate_content(

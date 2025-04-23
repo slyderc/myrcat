@@ -133,7 +133,7 @@ class Myrcat:
 
             # Initialize research manager
             self.research = ResearchManager(
-                self.config_parser, self.db, self.content_generator
+                self.config_parser, self.db, self.content_generator, self.artwork
             )
 
             # Create server
