@@ -687,7 +687,7 @@ class ResearchManager:
             prompt = prompt_template.format(artist=track.artist, title=track.title)
 
             # Generate research content
-            research_text = await self.content_generator.generate_content(
+            research_text = await self.content_generator.generate_research_content(
                 prompt=prompt, max_tokens=500
             )
 

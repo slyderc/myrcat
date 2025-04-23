@@ -16,7 +16,7 @@ from myrcat.managers.prompt import PromptManager
 
 class ContentGenerator:
     """Generates AI-enhanced content for social media posts.
-    
+
     TODO: Potential improvements:
     - Support for multiple AI providers (OpenAI, Anthropic, etc.)
     - Implement content caching to reduce API costs
@@ -33,16 +33,16 @@ class ContentGenerator:
             config: ConfigParser object with configuration
         """
         self.config = config
-        
+
         # Load settings from config
         self.load_config()
-        
+
         # Load templates for non-AI posts
         self.templates = self._load_templates()
-        
+
     def load_config(self):
         """Load settings from configuration.
-        
+
         This method can be called to reload configuration settings when the
         config file changes without requiring re-initialization of the class.
         """
@@ -54,7 +54,9 @@ class ContentGenerator:
             "ai_content", "model", fallback="claude-3-7-sonnet-latest"
         )
         self.max_tokens = self.config.getint("ai_content", "max_tokens", fallback=150)
-        self.temperature = self.config.getfloat("ai_content", "temperature", fallback=0.7)
+        self.temperature = self.config.getfloat(
+            "ai_content", "temperature", fallback=0.7
+        )
         self.ai_post_ratio = self.config.getfloat(
             "ai_content", "ai_post_ratio", fallback=0.3
         )
@@ -64,7 +66,9 @@ class ContentGenerator:
 
         # Initialize prompt manager
         prompts_dir = Path(
-            self.config.get("ai_content", "prompts_directory", fallback="templates/prompts")
+            self.config.get(
+                "ai_content", "prompts_directory", fallback="templates/prompts"
+            )
         )
         self.prompt_manager = PromptManager(prompts_dir)
 
@@ -249,14 +253,9 @@ class ContentGenerator:
             "content-type": "application/json",
         }
 
-        # Use a smaller max_tokens value for Bluesky posts to ensure we stay within character limits
-        ai_max_tokens = min(
-            self.max_tokens, 100
-        )  # 100 tokens is approximately 75-100 words
-
         data = {
             "model": self.model,
-            "max_tokens": ai_max_tokens,
+            "max_tokens": self.max_tokens,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.temperature,
         }
@@ -273,6 +272,44 @@ class ContentGenerator:
                     return None
         except Exception as e:
             logging.error(f"💥 Claude API call failed: {e}")
+            return None
+
+    async def generate_research_content(
+        self, prompt: str, max_tokens: int = 500
+    ) -> Optional[str]:
+        """Generate research content using the AI model.
+
+        Args:
+            prompt: The research prompt to send to the AI
+            max_tokens: Maximum number of tokens for the response
+
+        Returns:
+            Generated research text if successful, None otherwise
+        """
+        if not self.anthropic_api_key:
+            logging.error("❌ Anthropic API key not configured")
+            return None
+
+        try:
+            # Use a higher max_tokens value for research content
+            original_max_tokens = self.max_tokens
+            self.max_tokens = max_tokens
+
+            async with aiohttp.ClientSession() as session:
+                response = await self._call_claude_api(session, prompt)
+
+                # Restore original max_tokens
+                self.max_tokens = original_max_tokens
+
+                if response and response.get("content"):
+                    for content_block in response["content"]:
+                        if content_block.get("type") == "text":
+                            return content_block.get("text", "").strip()
+
+            return None
+
+        except Exception as e:
+            logging.error(f"💥 Error generating research content: {e}")
             return None
 
     def generate_hashtags(self, track: TrackInfo, is_ai_content: bool = False) -> str:
