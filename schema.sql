@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS db_version (
 );
 
 -- Insert the current version (initial insert or replace existing)
-INSERT OR REPLACE INTO db_version (id, version, updated_at) 
+INSERT OR REPLACE INTO db_version (id, version, updated_at)
 VALUES (1, 1, datetime('now'));
 
 -- Main playout tracks table
