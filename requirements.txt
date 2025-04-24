@@ -4,3 +4,4 @@ facebook-sdk
 pylast
 aiohttp>=3.8.0
 pillow>=9.0.0
+beautifulsoup4>=4.9.0
