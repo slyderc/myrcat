@@ -4,6 +4,7 @@ import logging
 import configparser
 import time
 import re
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -28,6 +29,7 @@ class SocialMediaManager:
         config: configparser.ConfigParser,
         artwork_manager: ArtworkManager,
         db_manager: DatabaseManager,
+        network_config=None,
     ):
         """Initialize the social media manager.
 
@@ -35,10 +37,12 @@ class SocialMediaManager:
             config: ConfigParser object with configuration
             artwork_manager: ArtworkManager instance for handling artwork
             db_manager: DatabaseManager instance for data persistence
+            network_config: Optional network configuration for API calls
         """
         self.config = config
         self.artwork_manager = artwork_manager
         self.db_manager = db_manager
+        self.network_config = network_config
 
         # Keep in-memory tracking as a fallback for database errors
         self.last_post_times = {}
@@ -1646,8 +1650,23 @@ class SocialMediaManager:
         Returns:
             API response or None on failure
         """
-        max_retries = 3
-        retry_delay = 2  # seconds
+        # Use network config values if available, otherwise use defaults
+        max_retries = (
+            self.network_config.max_retries 
+            if self.network_config 
+            else 3
+        )
+        retry_delay = (
+            self.network_config.retry_delay 
+            if self.network_config 
+            else 2
+        )
+        # Use backoff factor from network config or default
+        backoff_factor = (
+            self.network_config.backoff_factor 
+            if self.network_config 
+            else 2.0
+        )
         
         for attempt in range(max_retries):
             try:
@@ -1655,7 +1674,7 @@ class SocialMediaManager:
             except Exception as e:
                 if "rate limit" in str(e).lower():
                     # Rate limit hit
-                    wait_time = retry_delay * (2 ** attempt)
+                    wait_time = retry_delay * (backoff_factor ** attempt)
                     logging.warning(f"⚠️ Facebook rate limit hit, retrying in {wait_time}s")
                     await asyncio.sleep(wait_time)
                 elif attempt < max_retries - 1:

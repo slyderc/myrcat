@@ -26,13 +26,15 @@ class ContentGenerator:
     - Add support for generating images with AI
     """
 
-    def __init__(self, config):
+    def __init__(self, config, network_config=None):
         """Initialize with configuration.
 
         Args:
             config: ConfigParser object with configuration
+            network_config: Optional network configuration for API calls
         """
         self.config = config
+        self.network_config = network_config
 
         # Load settings from config
         self.load_config()
@@ -261,15 +263,31 @@ class ContentGenerator:
         }
 
         try:
-            async with session.post(api_url, headers=headers, json=data) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error_text = await response.text()
-                    logging.error(
-                        f"💥 Claude API error ({response.status}): {error_text}"
-                    )
-                    return None
+            # Get timeout from network config or use default
+            timeout = (
+                self.network_config.get_aiohttp_timeout() 
+                if self.network_config 
+                else 30.0
+            )
+            
+            try:
+                async with session.post(
+                    api_url, 
+                    headers=headers, 
+                    json=data,
+                    timeout=timeout
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        error_text = await response.text()
+                        logging.error(
+                            f"💥 Claude API error ({response.status}): {error_text}"
+                        )
+                        return None
+            except asyncio.TimeoutError:
+                logging.error(f"⏱️ Claude API call timed out after {timeout}s")
+                return None
         except Exception as e:
             logging.error(f"💥 Claude API call failed: {e}")
             return None

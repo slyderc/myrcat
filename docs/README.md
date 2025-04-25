@@ -72,10 +72,24 @@ sudo systemctl start myrcat
 Edit `config.ini_default` and set your configuration:
 
 ```ini
-[main]
-debug_log = false
-verbose_log = true
-logfile = /var/log/myrcat/myrcat.log
+[general]
+log_level = INFO
+log_file = log/myrcat.log
+database_path = myrcat.db
+publish_delay = 45
+
+[network]
+# Network operation settings
+connection_timeout = 10      # Seconds to wait for connections
+socket_timeout = 5           # Seconds to wait for socket operations
+max_retries = 3              # Default maximum retry count
+retry_delay = 2              # Seconds between retries
+jitter_factor = 0.1          # Random jitter factor for retry timing
+backoff_factor = 2.0         # Exponential backoff multiplier
+
+[server]
+host = 192.168.123.106
+port = 8080
 ...
 ```
 

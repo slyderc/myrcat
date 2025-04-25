@@ -2,7 +2,7 @@
 
 ## Overview
 
-Myrcat uses SQLite for persistent storage of track data, social media posts, and engagement metrics. The schema is centralized in `schema.sql` at the root of the project.
+Myrcat uses SQLite for persistent storage of track data, social media posts, engagement metrics, and various caches. The schema is centralized in `schema.sql` at the root of the project.
 
 ## Database Initialization
 
@@ -22,6 +22,8 @@ To initialize or update the database schema, use one of these methods:
 ## Schema Version
 
 The database tracks its schema version in the `db_version` table. The application checks this version at startup to ensure compatibility. If the schema version doesn't match what the code expects, an error is raised.
+
+Current schema version: **4**
 
 To update the schema version when making changes:
 1. Modify the schema.sql file with your changes
@@ -103,12 +105,72 @@ Tracks engagement metrics for social media posts.
 | comments   | INTEGER | Number of comments/replies            |
 | clicks     | INTEGER | Number of clicks (if available)       |
 
+### artist_research
+
+Stores research information about artists.
+
+| Column         | Type    | Description                             |
+|----------------|---------|----------------------------------------|
+| id             | INTEGER | Primary key                             |
+| artist         | TEXT    | Artist name                             |
+| artist_hash    | TEXT    | Hash of normalized artist name          |
+| research_text  | TEXT    | Research content about the artist       |
+| image_filename | TEXT    | Filename of artist image (if available) |
+| created_at     | DATETIME| When the research was created           |
+| updated_at     | DATETIME| When the research was last updated      |
+
+### image_search_cache
+
+Caches image search results to prevent repeated API calls.
+
+| Column      | Type    | Description                          |
+|-------------|---------|--------------------------------------|
+| id          | INTEGER | Primary key                          |
+| search_query| TEXT    | Artist or keyword used for searching |
+| image_url   | TEXT    | URL of found image                   |
+| width       | INTEGER | Image width (if known)               |
+| height      | INTEGER | Image height (if known)              |
+| cached_at   | DATETIME| When the result was cached           |
+
 ## Indexes
 
 The following indexes improve query performance:
 
 - `idx_posts_platform`: On social_media_posts (platform, post_id)
 - `idx_engagement_post_id`: On social_media_engagement (post_id)
+- `idx_artist_research_hash`: On artist_research (artist_hash)
+- `idx_image_cache_query`: On image_search_cache (search_query)
+
+## Cache Management
+
+The database includes tables for caching various data to improve performance and reduce API usage:
+
+1. **Artwork Cache**: Stores processed artwork files with hash-based filenames for quick retrieval
+2. **Artist Research Cache**: Stores artist information with a configurable expiration (default 90 days)
+3. **Image Search Cache**: Caches image search results with configurable expiration (default 30 days)
+
+All caches have automatic cleanup processes that run periodically to remove expired items:
+
+```python
+# Configure cache expiration in config.ini
+[artist_research]
+cache_max_age = 30         # Days to keep cache entries
+cleanup_interval = 7       # Days between cache cleanup runs
+```
+
+## Database Configuration
+
+Database behavior can be configured in the config.ini file:
+
+```ini
+[database]
+# SoundExchange reporting period (in days)
+reporting_period = 90
+# Days between database maintenance operations
+cleanup_interval = 30
+# Maximum history records to keep
+max_history = 1000
+```
 
 ## Schema Management Practices
 
@@ -117,3 +179,5 @@ The following indexes improve query performance:
 3. Increment the version number when changing the schema
 4. Update the EXPECTED_VERSION constant in code to match
 5. Use the init_database.sh script to safely apply schema changes
+6. Add appropriate indexes for fields used in WHERE clauses
+7. Consider adding a migration script for complex schema changes

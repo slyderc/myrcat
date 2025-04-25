@@ -15,6 +15,7 @@ graph TD
         A --> |runs| C[MyriadServer]
         A --> |registers callbacks| C
         A --> |manages| D[Background Tasks]
+        A --> |initializes| S[NetworkConfig]
     end
 
     subgraph "Data Flow"
@@ -32,6 +33,14 @@ graph TD
         A --> |initializes| M[ShowHandler]
     end
 
+    subgraph "Service Layer"
+        I --> |uses| R[ImageService]
+        S --> |provides config to| C
+        S --> |provides config to| L
+        S --> |provides config to| N
+        S --> |provides retry logic| Z
+    end
+
     subgraph "Social Media"
         L --> |initializes| N[ContentGenerator]
         L --> |initializes| O[SocialMediaAnalytics]
@@ -47,25 +56,25 @@ graph TD
 
     subgraph "External Systems"
         Q[Myriad Playout] --> |sends data| C
-        L --> |posts to| R[LastFM]
-        L --> |posts to| S[ListenBrainz]
-        L --> |posts to| T[Bluesky]
-        L --> |posts to| U[Facebook]
-        N --> |requests content| V[Claude AI]
+        L --> |posts to| T[LastFM]
+        L --> |posts to| U[ListenBrainz]
+        L --> |posts to| V[Bluesky]
+        L --> |posts to| W[Facebook]
+        N --> |requests content| X[Claude AI]
     end
 
     subgraph "Output"
-        J --> |writes| W[playlist.json]
-        J --> |writes| X[playlist.txt]
-        K --> |maintains| Y[history.json]
-        I --> |processes| Z[Artwork Files]
-        O --> |generates| AA[Analytics Reports]
+        J --> |writes| Y[playlist.json]
+        J --> |writes| Z[playlist.txt]
+        K --> |maintains| AA[history.json]
+        I --> |processes| AB[Artwork Files]
+        O --> |generates| AC[Analytics Reports]
     end
 
-    class A,B,C,D,E,F,G primary
-    class H,I,J,K,L,M,N,O,P secondary
-    class Q,R,S,T,U,V external
-    class W,X,Y,Z,AA output
+    class A,B,C,D,E,F,G,S primary
+    class H,I,J,K,L,M,N,O,P,R secondary
+    class Q,T,U,V,W,X external
+    class Y,Z,AA,AB,AC output
 
     classDef primary fill:#f9f,stroke:#333,stroke-width:2px
     classDef secondary fill:#bbf,stroke:#333,stroke-width:1px
@@ -83,7 +92,17 @@ myrcat/
 ├── server.py             # Socket server implementation
 ├── config.py             # Configuration management
 ├── models.py             # Data model definitions
-├── utils.py              # Utility functions
+├── utils/                # Utility functions
+│   ├── __init__.py       # Re-exports utilities for compatibility
+│   ├── decode.py         # JSON decoding utilities
+│   ├── file.py           # File operation utilities
+│   ├── image.py          # Image processing utilities
+│   ├── logging.py        # Logging configuration
+│   ├── network.py        # Network utilities and retry logic
+│   └── strings.py        # String processing utilities
+├── services/             # Service layer components
+│   ├── __init__.py       # Package definition
+│   └── image_service.py  # Centralized image processing service
 ├── exceptions.py         # Custom exception classes
 └── managers/             # Specialized component managers
     ├── artwork.py        # Artwork processing
@@ -94,6 +113,7 @@ myrcat/
     ├── content.py        # AI content generation
     ├── analytics.py      # Social media analytics
     ├── prompt.py         # AI prompt management
+    ├── research.py       # Artist research and image search
     └── show.py           # Radio show management
 ```
 
@@ -103,8 +123,9 @@ Myrcat follows a component-based architecture with clean dependency management a
 
 1. **Entry Point**: `myrcat.py` invokes the `main()` function from `myrcat/main.py`
 2. **Application Core**: The `Myrcat` class in `core.py` serves as the central coordinator
-3. **Component Managers**: Specialized classes handle specific aspects of functionality
-4. **Data Flow**: Socket server → JSON validation → Track processing → Multi-component handling
+3. **Service Layer**: Shared functionality extracted to services for reuse across components
+4. **Component Managers**: Specialized classes handle specific aspects of functionality
+5. **Data Flow**: Socket server → JSON validation → Track processing → Multi-component handling
 
 ### Initialization Flow
 
@@ -121,21 +142,33 @@ The main `Myrcat` class initializes all components with appropriate dependencies
 def _initialize_components(self):
     # Load configuration settings
     
-    # Initialize components
+    # Initialize core components
     self.db = DatabaseManager(self.config.get("general", "database_path"))
     self.playlist = PlaylistManager(self.playlist_json, self.playlist_txt, self.artwork_publish)
     self.history = HistoryManager(self.history_json, self.history_max_tracks)
-    self.artwork = ArtworkManager(self.artwork_incoming, self.artwork_publish, 
-                                  self.artwork_cache_dir, self.default_artwork_path)
-    self.social = SocialMediaManager(self.config_parser, self.artwork, self.db)
-    self.show_handler = ShowHandler(self.config_parser)
     
-    # Create server with callbacks
+    # Initialize network configuration
+    self.network_config = NetworkConfig(self.config_parser)
+    
+    # Initialize services and managers
+    self.artwork = ArtworkManager(
+        self.artwork_incoming, self.artwork_publish, 
+        self.artwork_cache_dir, self.default_artwork_path
+    )
+    self.content_generator = ContentGenerator(self.config_parser, self.network_config)
+    self.social = SocialMediaManager(self.config_parser, self.artwork, self.db, self.network_config)
+    self.show_handler = ShowHandler(self.config_parser)
+    self.research = ResearchManager(
+        self.config_parser, self.db, self.content_generator, self.artwork, self.network_config
+    )
+    
+    # Create server with callbacks and network config
     self.server = MyriadServer(
         host=self.config.get("server", "host"),
         port=self.config.getint("server", "port"),
         validator=self.validate_track_json,
         processor=self.process_new_track,
+        network_config=self.network_config,
     )
 ```
 
@@ -149,15 +182,29 @@ Components receive dependencies through constructor parameters rather than creat
 
 ```python
 class SocialMediaManager:
-    def __init__(self, config, artwork_manager, db_manager):
+    def __init__(self, config, artwork_manager, db_manager, network_config=None):
         self.config = config
         self.artwork_manager = artwork_manager
         self.db_manager = db_manager
+        self.network_config = network_config
 ```
 
 This approach improves testability and decouples component implementations.
 
-### 2. Asynchronous Programming
+### 2. Service Layer Pattern
+
+Common functionality is extracted into service classes that are shared across managers:
+
+```python
+class ImageService:
+    def __init__(self, incoming_dir, publish_dir, cache_dir=None, artists_dir=None, default_artwork_path=None):
+        # Initialize image processing service
+        
+    async def resize_image(self, image_path, width, height, format="JPEG"):
+        # Common image resizing logic used by multiple components
+```
+
+### 3. Asynchronous Programming
 
 The system uses Python's `asyncio` for non-blocking I/O operations:
 
@@ -179,7 +226,7 @@ async def process_new_track(self, track_json: Dict[str, Any]):
         await self.social.update_social_media(track)
 ```
 
-### 3. Observer Pattern
+### 4. Observer Pattern
 
 Configuration hot-reloading and event-based handling:
 
@@ -191,7 +238,7 @@ async def check_config_task(self):
             self._apply_config_changes()
 ```
 
-### 4. Strategy Pattern
+### 5. Strategy Pattern
 
 Content generation with dynamically selected strategies:
 
@@ -203,22 +250,27 @@ def generate_content(self, track, platform):
         return self._generate_template_content(track, platform)
 ```
 
-### 5. Factory Methods
+### 6. Retry Pattern with Exponential Backoff
 
-AI prompts are selected based on context:
+Network operations use a standardized retry mechanism:
 
 ```python
-def select_prompt(self, track, current_hour):
-    # Try program-specific prompt first
-    if track.program and self._prompt_exists_for_program(track.program):
-        return self._get_program_prompt(track.program)
+async def retry_async(func, *args, network_config=None, max_retries=None, **kwargs):
+    # Use network config or defaults
+    max_retries = max_retries or network_config.max_retries if network_config else 3
+    retry_delay = network_config.retry_delay if network_config else 2
     
-    # Otherwise, use time-of-day prompt
-    if self._prompt_exists_for_hour(current_hour):
-        return self._get_time_prompt(current_hour)
-    
-    # Fall back to default prompt
-    return self._get_default_prompt()
+    # Attempt operation with exponential backoff
+    for attempt in range(max_retries):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            # Calculate delay with exponential backoff
+            wait_time = retry_delay * (2 ** attempt)
+            await asyncio.sleep(wait_time)
+            # Last attempt - raise the exception
+            if attempt == max_retries - 1:
+                raise
 ```
 
 ## Data Models
@@ -266,7 +318,22 @@ The data flows through the system as follows:
 ```python
 class MyriadServer:
     async def handle_connection(self, reader, writer):
-        data = await reader.read()
+        # Get socket timeout from network config or use default
+        socket_timeout = (
+            self.network_config.get_socket_timeout() 
+            if self.network_config 
+            else 5.0
+        )
+        
+        # Set a timeout for reading data
+        try:
+            data = await asyncio.wait_for(reader.read(), timeout=socket_timeout)
+            if not data:
+                return
+        except asyncio.TimeoutError:
+            logging.warning(f"⏱️ Read timeout after {socket_timeout}s")
+            return
+            
         track_data = decode_json_data(data)
         
         # Validate using callback
@@ -335,6 +402,7 @@ class Config:
 
 Configuration sections include:
 - `general`: Basic settings like logging, database path, timezone
+- `network`: Network timeouts, retry settings, and connection parameters
 - `server`: Socket server host and port
 - `artwork`: Paths for artwork processing
 - `web`: Output file locations
@@ -392,18 +460,20 @@ async def update_new_platform(self, track: TrackInfo):
     await self.analytics.track_post("NewPlatform", track, post_id=response.id)
 ```
 
-### 2. AI Content Generation
+### 2. Services
 
-The prompt system can be extended with new prompt types:
+New services can be added to the `services` package for shared functionality:
 
 ```python
-# In prompt.py
-def _get_special_prompt(self, criteria):
-    # Logic to select special prompts based on custom criteria
-    prompt_path = self.prompts_dir / f"special_{criteria}.txt"
-    if prompt_path.exists():
-        return self._load_prompt_file(prompt_path)
-    return None
+# In services/new_service.py
+class NewService:
+    def __init__(self, config):
+        self.config = config
+        # Initialize service
+        
+    async def perform_operation(self, data):
+        # Implementation of shared functionality
+        pass
 ```
 
 ### 3. Database Schemas
@@ -425,6 +495,77 @@ async def create_new_table(self):
     conn.commit()
     conn.close()
 ```
+
+## Network Configuration
+
+The system now includes centralized network configuration for consistent timeout, retry, and connection behaviors:
+
+### NetworkConfig Class
+
+```python
+class NetworkConfig:
+    def __init__(self, config):
+        self.config = config
+        self._load_config()
+    
+    def _load_config(self):
+        # Load timeouts
+        self.connection_timeout = self.config.getint(
+            "network", "connection_timeout", fallback=10
+        )
+        self.socket_timeout = self.config.getint(
+            "network", "socket_timeout", fallback=5
+        )
+        
+        # Load retry settings
+        self.max_retries = self.config.getint(
+            "network", "max_retries", fallback=3
+        )
+        self.retry_delay = self.config.getint(
+            "network", "retry_delay", fallback=2
+        )
+        
+        # Additional settings
+        self.jitter_factor = self.config.getfloat(
+            "network", "jitter_factor", fallback=0.1
+        )
+        self.backoff_factor = self.config.getfloat(
+            "network", "backoff_factor", fallback=2.0
+        )
+```
+
+### Network Configuration Usage
+
+Components use the network configuration for consistent behavior:
+
+```python
+# Example of timeouts in HTTP requests
+timeout = self.network_config.get_aiohttp_timeout() if self.network_config else 10.0
+async with session.get(url, timeout=timeout) as response:
+    # Process response...
+
+# Example of retry logic for API calls
+result = await retry_async(
+    self._api_call,
+    args,
+    network_config=self.network_config,
+    max_retries=custom_retries  # Optional override
+)
+```
+
+## Refactored Architecture
+
+Recent refactoring has improved the codebase organization in two major areas:
+
+1. **Utility Module Organization**
+   - Split monolithic utils.py into specialized modules
+   - Improved discoverability and maintainability
+   - Maintained backward compatibility through imports
+
+2. **Image Processing Service**
+   - Centralized image operations in ImageService
+   - Reduced code duplication between managers
+   - Standardized image handling and error recovery
 
 ## Limitations and Optimization Opportunities
 
@@ -535,9 +676,11 @@ The following sequence diagram illustrates the track processing flow:
 sequenceDiagram
     participant Myriad as Myriad Playout
     participant Server as MyriadServer
+    participant NetworkConfig as NetworkConfig
     participant Core as Myrcat Core
     participant Validator as JSON Validator
     participant Artwork as ArtworkManager
+    participant ImageService as ImageService
     participant Playlist as PlaylistManager
     participant History as HistoryManager
     participant Social as SocialMediaManager
@@ -545,7 +688,9 @@ sequenceDiagram
     participant DB as DatabaseManager
     
     Myriad->>Server: Send Track JSON
-    Server->>Validator: Validate JSON
+    Server->>NetworkConfig: Get socket_timeout
+    NetworkConfig-->>Server: Return timeout value
+    Server->>Validator: Validate JSON with timeout
     Validator-->>Server: Validation Result
     
     alt is valid track
@@ -556,6 +701,8 @@ sequenceDiagram
         end
         
         Core->>Artwork: process_artwork()
+        Artwork->>ImageService: process_artwork()
+        ImageService-->>Artwork: processed_artwork_path
         Artwork-->>Core: processed_artwork_path
         
         par Update various components
@@ -566,14 +713,16 @@ sequenceDiagram
         end
         
         opt social media enabled
+            Social->>NetworkConfig: Get API timeouts
+            NetworkConfig-->>Social: Return timeout values
             Social->>AI: generate_content()
             AI-->>Social: post_content
             
-            par Post to platforms
-                Social->>Social: update_lastfm()
-                Social->>Social: update_listenbrainz()
-                Social->>Social: update_bluesky()
-                Social->>Social: update_facebook() 
+            par Post to platforms with retry
+                Social->>Social: update_lastfm() with retry
+                Social->>Social: update_listenbrainz() with retry
+                Social->>Social: update_bluesky() with retry
+                Social->>Social: update_facebook() with retry
             end
         end
     else invalid track
@@ -588,10 +737,13 @@ This state diagram shows how the configuration system impacts component states:
 ```mermaid
 stateDiagram-v2
     [*] --> Initializing: Start application
-    Initializing --> Running: Initialize components
+    Initializing --> ConfigLoading: Load config file
+    ConfigLoading --> NetworkConfigSetup: Initialize network settings
+    NetworkConfigSetup --> Running: Initialize components with network config
     Running --> ConfigChanged: Config file modified
     ConfigChanged --> ApplyingChanges: Reload config
-    ApplyingChanges --> Running: Update components
+    ApplyingChanges --> NetworkConfigUpdate: Update network settings
+    NetworkConfigUpdate --> Running: Update components
     Running --> CleaningUp: Shutdown signal
     CleaningUp --> [*]: Exit application
     
@@ -610,7 +762,13 @@ stateDiagram-v2
 
 Myrcat's architecture demonstrates a well-designed, component-based system with clear separation of concerns. Its modular design allows for easy extension and maintenance, while the asynchronous programming model provides efficient I/O handling suitable for a service that bridges multiple external systems.
 
-The combination of dependency injection, strategy patterns, and observer patterns creates a flexible framework that can adapt to changing requirements while maintaining code quality and testability.
+Recent refactoring has further improved the architecture by:
+1. Better organizing utilities into specialized modules
+2. Extracting common functionality into a service layer
+3. Centralizing network configuration for consistent behavior
+4. Implementing standardized retry mechanisms
+
+The combination of dependency injection, service layer pattern, and robust network handling creates a flexible framework that can adapt to changing requirements while maintaining code quality and resilience to network issues.
 
 The visual diagrams above help illustrate:
 1. The hierarchical component structure and dependencies

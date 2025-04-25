@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, Tuple
 from myrcat.config import Config
 from myrcat.models import TrackInfo
 from myrcat.utils import load_skip_list, clean_title
+from myrcat.utils.network import NetworkConfig
 from myrcat.server import MyriadServer
 from myrcat.managers.database import DatabaseManager
 from myrcat.managers.artwork import ArtworkManager
@@ -118,6 +119,10 @@ class Myrcat:
                 self.playlist_json, self.playlist_txt, self.artwork_publish
             )
             self.history = HistoryManager(self.history_json, self.history_max_tracks)
+            
+            # Initialize network configuration
+            self.network_config = NetworkConfig(self.config_parser)
+            
             self.artwork = ArtworkManager(
                 self.artwork_incoming,
                 self.artwork_publish,
@@ -126,14 +131,14 @@ class Myrcat:
             )
 
             # Initialize content generator for AI content
-            self.content_generator = ContentGenerator(self.config_parser)
+            self.content_generator = ContentGenerator(self.config_parser, self.network_config)
 
-            self.social = SocialMediaManager(self.config_parser, self.artwork, self.db)
+            self.social = SocialMediaManager(self.config_parser, self.artwork, self.db, self.network_config)
             self.show_handler = ShowHandler(self.config_parser)
 
             # Initialize research manager
             self.research = ResearchManager(
-                self.config_parser, self.db, self.content_generator, self.artwork
+                self.config_parser, self.db, self.content_generator, self.artwork, self.network_config
             )
 
             # Create server
@@ -142,6 +147,7 @@ class Myrcat:
                 port=self.config.getint("server", "port"),
                 validator=self.validate_track_json,
                 processor=self.process_new_track,
+                network_config=self.network_config,
             )
         else:
             # Update existing components
@@ -171,6 +177,11 @@ class Myrcat:
             if hasattr(self, "research"):
                 self.research.load_config()
                 logging.debug(f"🔄 Updated research manager with new configuration")
+                
+            # Update network configuration
+            if hasattr(self, "network_config"):
+                self.network_config.update_from_config()
+                logging.debug(f"🔄 Updated network configuration")
 
     def _apply_config_changes(self):
         """Apply configuration changes to all components.

@@ -3,7 +3,6 @@ log_level = INFO
 log_file = log/myrcat.log
 database_path = myrcat.db
 publish_delay = 45
-timezone = US/Pacific
 
 [server]
 host = 192.168.123.106
@@ -19,6 +18,8 @@ default_artwork = templates/artwork/default_nowplaying.jpg
 playlist_json = playlist.json
 playlist_txt = playlist.txt
 history_json = history.json
+# Maximum number of tracks to keep in history
+history_max_tracks = 30
 research_json = research.json
 
 [artist_research]
