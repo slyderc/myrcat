@@ -347,6 +347,15 @@ class ImageService:
                 format="PNG",
             )
             
+            # Set file permissions to be readable (0644)
+            if success:
+                try:
+                    import os
+                    os.chmod(target_path, 0o644)
+                    logging.debug(f"🔒 Set permissions to 0644 for {target_path.name}")
+                except Exception as e:
+                    logging.error(f"💥 Error setting file permissions: {e}")
+            
             # Clean up temp file
             try:
                 temp_path.unlink()
