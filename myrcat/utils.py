@@ -13,7 +13,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 
 def setup_logging(log_file: str, log_level: str) -> None:
@@ -145,3 +145,66 @@ def clean_title(title: str) -> str:
     if not title:
         return ""
     return re.split(r"[\(\[\<]", title)[0].strip()
+
+
+def normalize_artist_name(artist: str) -> str:
+    """Normalize an artist name for consistent matching and comparison.
+    
+    This function:
+    1. Converts to lowercase
+    2. Removes common prefixes like "The", "A", "An"
+    3. Removes special characters
+    4. Normalizes whitespace
+    
+    Args:
+        artist: Original artist/band name
+        
+    Returns:
+        Normalized artist name for comparison purposes
+    """
+    if not artist:
+        return ""
+        
+    # Convert to lowercase and trim whitespace
+    normalized_artist = artist.lower().strip()
+    
+    # Remove common prefixes
+    prefixes = ["the ", "a ", "an "]
+    for prefix in prefixes:
+        if normalized_artist.startswith(prefix):
+            normalized_artist = normalized_artist[len(prefix):]
+            break
+    
+    # Clean special characters from artist name
+    normalized_artist = re.sub(r'[^\w\s]', ' ', normalized_artist)
+    
+    # Replace multiple spaces with a single space
+    normalized_artist = re.sub(r'\s+', ' ', normalized_artist).strip()
+    
+    return normalized_artist
+
+
+def clean_artist_name(artist: str) -> str:
+    """Clean artist name by removing featuring artists, collaborations, etc.
+    
+    This function is less aggressive than normalize_artist_name and preserves
+    capitalization, but removes common features or collaboration parts.
+    
+    Args:
+        artist: Original artist/band name
+        
+    Returns:
+        Cleaned artist name suitable for display or searching
+    """
+    if not artist:
+        return ""
+        
+    # Simple cleanup of artist name
+    clean_artist = artist.strip()
+    
+    # Remove featuring artists for cleaner search
+    for separator in [" feat. ", " ft. ", " featuring ", " with ", " & ", " and "]:
+        if separator in clean_artist.lower():
+            clean_artist = clean_artist.split(separator, 1)[0].strip()
+    
+    return clean_artist

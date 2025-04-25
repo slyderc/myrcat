@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from myrcat.utils import normalize_artist_name
+
 # Import Pillow conditionally to handle environments without it
 try:
     from PIL import Image
@@ -246,26 +248,37 @@ class ArtworkManager:
         logging.debug(f"⚠️ wait_for_file failed on {incoming_path}")
         return False
 
-    def generate_hash(self, artist, title):
-        """
-        Generate a hash from artist and title that matches the JavaScript implementation.
-        This ensures compatibility between the web player and the server.
 
+    def generate_hash(self, artist, title=None):
+        """
+        Generate a hash from artist and optionally title.
+        
+        When title is provided, generates a hash for the specific artist-title pair.
+        When title is None or omitted, generates a hash only for the artist, 
+        suitable for artist-level lookups.
+        
         Args:
             artist: Track artist
-            title: Track title
-
+            title: Track title (optional)
+            
         Returns:
             Hash string
         """
-        str_to_hash = f"{artist}-{title}".lower()
+        if title is None:
+            # Artist-only hash with normalization using utility function
+            str_to_hash = normalize_artist_name(artist)
+        else:
+            # Original behavior with artist-title pair for backward compatibility
+            str_to_hash = f"{artist}-{title}".lower()
+        
+        # Generate hash value
         hash_val = 0
         for i in range(len(str_to_hash)):
             hash_val = ((hash_val << 5) - hash_val) + ord(str_to_hash[i])
             hash_val = (
                 hash_val & 0xFFFFFFFF
             )  # Convert to 32bit integer (equivalent to |= 0 in JS)
-
+            
         return format(abs(hash_val), "x")  # Convert to hex string like in JS
 
     async def cleanup_old_artwork(self) -> None:

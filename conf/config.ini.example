@@ -31,17 +31,17 @@ images = artists
 # Default image dimensions for artist photos
 image_width = 300
 image_height = 300
-# Kagi API settings for image search
-kagi_api_key =
-# Maximum number of image results to consider
-kagi_max_results = 5
-# Minimum required image dimensions
-kagi_min_width = 500
-kagi_min_height = 500
-# Image search filters
-kagi_image_filters = photo,face
-# Safe search level (off, moderate, high)
-kagi_safe_search = moderate
+# Minimum artist photo image dimensions to scrape
+min_image_width = 500
+min_image_height = 500
+
+# Web scraping settings
+max_retries = 3         # Maximum number of retry attempts
+retry_delay = 1         # Seconds to wait between retries
+
+# Cache management settings
+cache_max_age = 30      # Days to keep cache entries
+cleanup_interval = 7    # Days between cache cleanup runs
 
 [lastfm]
 enabled = false

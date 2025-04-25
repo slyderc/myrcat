@@ -16,6 +16,7 @@ from myrcat.models import TrackInfo
 from myrcat.managers.database import DatabaseManager
 from myrcat.managers.content import ContentGenerator
 from myrcat.managers.artwork import ArtworkManager
+from myrcat.utils import normalize_artist_name, clean_artist_name
 
 
 class ResearchManager:
@@ -75,13 +76,16 @@ class ResearchManager:
         )
 
         # Retry configuration
-        self.max_retries = 3
-        self.retry_delay = 1  # seconds
-        self.cache_max_age = timedelta(days=30)  # Cache results for 30 days
-
+        self.max_retries = config.getint("artist_research", "max_retries", fallback=3)
+        self.retry_delay = config.getint("artist_research", "retry_delay", fallback=1)
+        
+        # Cache configuration
+        cache_max_age_days = config.getint("artist_research", "cache_max_age", fallback=30)
+        self.cache_max_age = timedelta(days=cache_max_age_days)  # Cache results for specified days
+        
         # Cache cleanup configuration
-        self.cleanup_batch_size = 100  # Number of records to delete in one batch
-        self.cleanup_interval = timedelta(days=7)  # Run cleanup weekly
+        cleanup_interval_days = config.getint("artist_research", "cleanup_interval", fallback=7)
+        self.cleanup_interval = timedelta(days=cleanup_interval_days)  # Run cleanup weekly
         self.last_cleanup: Optional[datetime] = None
 
         # Create directories if they don't exist
@@ -101,10 +105,9 @@ class ResearchManager:
         """Clean up expired entries from the image search cache and orphaned image files.
 
         This method:
-        1. Removes entries older than cache_max_age from the database
-        2. Processes deletions in batches to avoid locking the database
-        3. Runs periodically based on cleanup_interval
-        4. Removes orphaned image files from the images directory
+        1. Removes all entries older than cache_max_age from the database
+        2. Runs periodically based on cleanup_interval
+        3. Removes orphaned image files from the images directory
         """
         # Check if it's time to run cleanup
         now = datetime.now()
@@ -114,48 +117,23 @@ class ResearchManager:
         try:
             logging.info("🧹 Starting image search cache cleanup")
             cutoff_date = (now - self.cache_max_age).isoformat()
-            total_deleted = 0
 
             with self.db._get_connection() as conn:
-                while True:
-                    # Get batch of expired entries
-                    cursor = conn.execute(
-                        """
-                        SELECT id, search_query
-                        FROM image_search_cache
-                        WHERE cached_at < ?
-                        LIMIT ?
-                        """,
-                        (cutoff_date, self.cleanup_batch_size),
-                    )
-                    expired_entries = cursor.fetchall()
-
-                    if not expired_entries:
-                        break
-
-                    # Delete the batch
-                    entry_ids = [entry[0] for entry in expired_entries]
-                    placeholders = ",".join("?" * len(entry_ids))
-
-                    conn.execute(
-                        f"""
-                        DELETE FROM image_search_cache
-                        WHERE id IN ({placeholders})
-                        """,
-                        entry_ids,
-                    )
-
-                    batch_count = len(expired_entries)
-                    total_deleted += batch_count
-                    logging.debug(f"🧹 Deleted {batch_count} expired cache entries")
-
-                    # Small delay between batches to prevent database lockup
-                    await asyncio.sleep(0.1)
-
-            if total_deleted > 0:
-                logging.info(f"✨ Cleaned up {total_deleted} expired cache entries")
-            else:
-                logging.debug("✨ No expired cache entries found")
+                # Delete all expired entries at once
+                cursor = conn.execute(
+                    """
+                    DELETE FROM image_search_cache
+                    WHERE cached_at < ?
+                    """,
+                    (cutoff_date,),
+                )
+                
+                total_deleted = cursor.rowcount
+                
+                if total_deleted > 0:
+                    logging.info(f"✨ Cleaned up {total_deleted} expired cache entries")
+                else:
+                    logging.debug("✨ No expired cache entries found")
 
             # Clean up orphaned image files
             await self._cleanup_orphaned_images()
@@ -221,8 +199,8 @@ class ResearchManager:
             return
 
         try:
-            # Generate artist hash
-            artist_hash = self.artwork_manager.generate_hash(track.artist, track.title)
+            # Generate artist hash (using artist name only for consistent lookup)
+            artist_hash = self.artwork_manager.generate_hash(track.artist, None)
 
             # Check if we need to do research
             research_needed = await self._check_research_needed(
@@ -296,13 +274,8 @@ class ResearchManager:
         Returns:
             Cleaned artist name
         """
-        # Simple cleanup of artist name
-        clean_artist = artist.strip()
-        
-        # Remove featuring artists for cleaner search
-        for separator in [" feat. ", " ft. ", " featuring ", " with ", " & "]:
-            if separator in clean_artist.lower():
-                clean_artist = clean_artist.split(separator, 1)[0].strip()
+        # Use the utility function for artist name cleaning
+        clean_artist = clean_artist_name(artist)
         
         logging.debug(f"🔍 Using artist name for search: '{clean_artist}'")
         return clean_artist
@@ -947,14 +920,15 @@ class ResearchManager:
             with self.db._get_connection() as conn:
                 conn.execute(
                     """
-                    INSERT INTO artist_research (artist_hash, research_text)
-                    VALUES (?, ?)
+                    INSERT INTO artist_research (artist, artist_hash, research_text)
+                    VALUES (?, ?, ?)
                     ON CONFLICT(artist_hash)
                     DO UPDATE SET
+                        artist = excluded.artist,
                         research_text = excluded.research_text,
                         updated_at = CURRENT_TIMESTAMP
                     """,
-                    (artist_hash, research_text),
+                    (artist, artist_hash, research_text),
                 )
 
         except Exception as e:
@@ -980,13 +954,11 @@ class ResearchManager:
                 result = cursor.fetchone()
 
                 if result:
+                    # Only include fields relevant for website display
                     research_data = {
                         "artist": artist,
-                        "artist_hash": artist_hash,
                         "research": result[0],
-                        "image": result[1] if result[1] else None,
-                        "created_at": result[2],
-                        "updated_at": result[3],
+                        "image": result[1] if result[1] else None
                     }
 
                     # Write to JSON file
@@ -1026,6 +998,18 @@ class ResearchManager:
         self.min_image_height = self.config.getint(
             "artist_research", "min_image_height", fallback=500
         )
+        
+        # Retry configuration
+        self.max_retries = self.config.getint("artist_research", "max_retries", fallback=3)
+        self.retry_delay = self.config.getint("artist_research", "retry_delay", fallback=1)
+        
+        # Cache configuration
+        cache_max_age_days = self.config.getint("artist_research", "cache_max_age", fallback=30)
+        self.cache_max_age = timedelta(days=cache_max_age_days)
+        
+        # Cache cleanup configuration
+        cleanup_interval_days = self.config.getint("artist_research", "cleanup_interval", fallback=7)
+        self.cleanup_interval = timedelta(days=cleanup_interval_days)
 
         # Run cache cleanup after config reload
         asyncio.create_task(self._cleanup_cache())

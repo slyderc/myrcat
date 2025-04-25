@@ -47,6 +47,7 @@ templates/prompts/*.txt
 templates/social/*.png
 templates/fonts/*.ttf
 templates/artwork/*.png
+artists/*
 test/
 backup/
 reports/
