@@ -51,7 +51,7 @@ artists/*
 test/
 backup/
 reports/
-temp/*png
+temp/*
 utils/*.ini
 test.sh
 dev.ini
