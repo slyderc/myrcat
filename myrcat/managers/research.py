@@ -83,27 +83,35 @@ class ResearchManager:
         # Retry configuration
         self.max_retries = config.getint("artist_research", "max_retries", fallback=3)
         self.retry_delay = config.getint("artist_research", "retry_delay", fallback=1)
-        
+
         # Cache configuration
-        cache_max_age_days = config.getint("artist_research", "cache_max_age", fallback=30)
-        self.cache_max_age = timedelta(days=cache_max_age_days)  # Cache results for specified days
-        
+        cache_max_age_days = config.getint(
+            "artist_research", "cache_max_age", fallback=30
+        )
+        self.cache_max_age = timedelta(
+            days=cache_max_age_days
+        )  # Cache results for specified days
+
         # Cache cleanup configuration
-        cleanup_interval_days = config.getint("artist_research", "cleanup_interval", fallback=7)
-        self.cleanup_interval = timedelta(days=cleanup_interval_days)  # Run cleanup weekly
+        cleanup_interval_days = config.getint(
+            "artist_research", "cleanup_interval", fallback=7
+        )
+        self.cleanup_interval = timedelta(
+            days=cleanup_interval_days
+        )  # Run cleanup weekly
         self.last_cleanup: Optional[datetime] = None
 
         # Create directories if they don't exist
         ensure_directory(self.images_directory)
         ensure_directory(self.research_json_path.parent)
-        
+
         # Initialize image service
         self.image_service = ImageService(
             incoming_dir=self.artwork_manager.incoming_dir,
             publish_dir=self.artwork_manager.publish_dir,
             cache_dir=self.artwork_manager.cached_artwork_dir,
             artists_dir=self.images_directory,
-            default_artwork_path=self.artwork_manager.default_artwork_path
+            default_artwork_path=self.artwork_manager.default_artwork_path,
         )
 
         if self.enabled:
@@ -141,9 +149,9 @@ class ResearchManager:
                     """,
                     (cutoff_date,),
                 )
-                
+
                 total_deleted = cursor.rowcount
-                
+
                 if total_deleted > 0:
                     logging.info(f"✨ Cleaned up {total_deleted} expired cache entries")
                 else:
@@ -262,7 +270,7 @@ class ResearchManager:
         try:
             # Clean up the artist name by removing featuring artists
             clean_artist = clean_artist_name(artist)
-            
+
             # Find artist image URL using fallback chain
             image_url = await self._find_artist_image_url(clean_artist)
             if not image_url:
@@ -273,16 +281,18 @@ class ResearchManager:
                 image_url=image_url,
                 artist_hash=artist_hash,
                 width=self.image_width,
-                height=self.image_height
+                height=self.image_height,
             )
-            
+
             return image_filename
 
         except Exception as e:
             logging.error(f"💥 Error processing artist image: {e}")
             return None
 
-    async def _check_artist_image_cache(self, artist_name: str) -> Optional[Dict[str, Any]]:
+    async def _check_artist_image_cache(
+        self, artist_name: str
+    ) -> Optional[Dict[str, Any]]:
         """Check if we have a cached result for this artist.
 
         Args:
@@ -355,7 +365,6 @@ class ResearchManager:
         except Exception as e:
             logging.error(f"💥 Error caching image result: {e}")
 
-
     async def _find_artist_image_url(self, artist_name: str) -> Optional[str]:
         """Find best artist image URL using multiple sources with fallback chain.
 
@@ -371,9 +380,9 @@ class ResearchManager:
             if cached_result:
                 logging.debug("🎯 Using cached image result")
                 return cached_result["url"]
-            
+
             # Try each source in order until we find an image
-            
+
             # 1. Try Spotify API if configured
             spotify_image = await self._try_spotify_artist_image(artist_name)
             if spotify_image:
@@ -385,7 +394,7 @@ class ResearchManager:
                     self.min_image_height,  # Using minimum as default
                 )
                 return spotify_image
-                
+
             # 2. Try Last.fm API if configured
             lastfm_image = await self._try_lastfm_artist_image(artist_name)
             if lastfm_image:
@@ -397,7 +406,7 @@ class ResearchManager:
                     self.min_image_height,  # Using minimum as default
                 )
                 return lastfm_image
-            
+
             # No images found through any source
             logging.warning(f"⚠️ No artist images found for: {artist_name}")
             return None
@@ -405,251 +414,265 @@ class ResearchManager:
         except Exception as e:
             logging.error(f"💥 Error searching for images: {e}")
             return None
-            
+
     async def _try_spotify_artist_image(self, artist_name: str) -> Optional[str]:
         """Try to get artist image from Spotify API.
-        
+
         Args:
             artist_name: Name of the artist
-            
+
         Returns:
             URL of artist image if found, None otherwise
         """
         # Spotify is not implemented yet - placeholder for future implementation
         # This would require Spotify API credentials and OAuth flow
         # For now, we'll just log and return None
-        logging.debug(f"ℹ️ Spotify API image search not implemented yet for: {artist_name}")
+        logging.debug(
+            f"ℹ️ Spotify API image search not implemented yet for: {artist_name}"
+        )
         return None
-        
+
     async def _try_lastfm_artist_image(self, artist_name: str) -> Optional[str]:
         """Get artist image from Last.fm website by direct scraping.
-        
+
         Args:
             artist_name: Name of the artist
-            
+
         Returns:
             URL of artist image if found, None otherwise
         """
         from myrcat.utils.network import retry_async
-        
+
         try:
             # Skip empty artist names
             if not artist_name:
                 logging.debug("ℹ️ Empty artist name provided for Last.fm lookup")
                 return None
-            
+
             # Check cache first
             cache_result = await self._check_artist_image_cache(artist_name)
             if cache_result:
                 logging.debug(f"🎯 Using cached image for {artist_name}")
                 return cache_result["url"]
-                
+
             logging.info(f"🔍 Searching Last.fm website for artist: '{artist_name}'")
-            
+
             # Try the direct artist search approach first as it's most reliable
             # Use retry_async to handle network failures with proper retries
             max_retries = (
-                self.network_config.max_retries 
-                if self.network_config 
+                self.network_config.max_retries
+                if self.network_config
                 else self.max_retries
             )
             retry_delay = (
-                self.network_config.retry_delay 
-                if self.network_config 
+                self.network_config.retry_delay
+                if self.network_config
                 else self.retry_delay
             )
-            
+
             image_url = await retry_async(
                 self._scrape_lastfm_artist_search,
                 artist_name,
                 max_retries=max_retries,
-                retry_delay=retry_delay
+                retry_delay=retry_delay,
             )
-            
+
             if image_url:
                 # Cache the result
                 await self._cache_artist_image(
                     artist_name,
                     image_url,
                     self.min_image_width,  # Default value
-                    self.min_image_height  # Default value
+                    self.min_image_height,  # Default value
                 )
                 return image_url
-                
+
             # If direct search fails, try related artist names
             related_searches = generate_artist_variations(artist_name)
             for related_name, related_desc in related_searches:
-                logging.debug(f"🔍 Trying related artist: '{related_name}' ({related_desc})")
-                
+                logging.debug(
+                    f"🔍 Trying related artist: '{related_name}' ({related_desc})"
+                )
+
                 image_url = await self._scrape_lastfm_artist_search(related_name)
                 if image_url:
-                    logging.info(f"✅ Found image using related artist: '{related_name}' ({related_desc})")
+                    logging.info(
+                        f"✅ Found image using related artist: '{related_name}' ({related_desc})"
+                    )
                     # Cache with original artist name
                     await self._cache_artist_image(
                         artist_name,
                         image_url,
                         self.min_image_width,
-                        self.min_image_height
+                        self.min_image_height,
                     )
                     return image_url
-            
+
             # As a last resort, try to get album covers
             logging.debug(f"🔍 Trying album covers for: {artist_name}")
             image_url = await self._scrape_lastfm_artist_albums(artist_name)
             if image_url:
                 logging.info(f"✅ Found album cover for artist: {artist_name}")
                 await self._cache_artist_image(
-                    artist_name,
-                    image_url,
-                    self.min_image_width,
-                    self.min_image_height
+                    artist_name, image_url, self.min_image_width, self.min_image_height
                 )
                 return image_url
-                
+
             # If still no luck, try album covers for related artists
             for related_name, related_desc in related_searches:
-                logging.debug(f"🔍 Trying album covers for related artist: '{related_name}'")
+                logging.debug(
+                    f"🔍 Trying album covers for related artist: '{related_name}'"
+                )
                 image_url = await self._scrape_lastfm_artist_albums(related_name)
                 if image_url:
-                    logging.info(f"✅ Found album cover for related artist: '{related_name}'")
+                    logging.info(
+                        f"✅ Found album cover for related artist: '{related_name}'"
+                    )
                     await self._cache_artist_image(
                         artist_name,
                         image_url,
                         self.min_image_width,
-                        self.min_image_height
+                        self.min_image_height,
                     )
                     return image_url
-            
+
             logging.debug(f"ℹ️ No artist images found on Last.fm for: {artist_name}")
             return None
-            
+
         except Exception as e:
             logging.error(f"💥 Error getting Last.fm image: {e}")
             return None
-    
+
     async def _scrape_lastfm_artist_search(self, artist_name: str) -> Optional[str]:
         """Scrape Last.fm artist search results to find the best artist image.
-        
+
         Args:
             artist_name: Name of the artist to search for
-            
+
         Returns:
             URL of the best artist image found, or None if no suitable image
         """
         try:
             # Build the URL for artist search
-            params = {
-                'q': artist_name
-            }
+            params = {"q": artist_name}
             search_url = f"https://www.last.fm/search/artists?{urlencode(params)}"
             logging.debug(f"🔍 Scraping Last.fm artist search: {search_url}")
-            
+
             # Use a browser-like User-Agent to avoid being blocked
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
-            
+
             # Get timeout from network config or use default
             timeout = (
-                self.network_config.get_aiohttp_timeout() 
-                if self.network_config 
+                self.network_config.get_aiohttp_timeout()
+                if self.network_config
                 else 10.0
             )
-            
+
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(
-                        search_url, 
-                        headers=headers, 
-                        timeout=timeout
+                        search_url, headers=headers, timeout=timeout
                     ) as response:
                         if response.status != 200:
-                            logging.debug(f"⚠️ Last.fm search returned status: {response.status}")
+                            logging.debug(
+                                f"⚠️ Last.fm search returned status: {response.status}"
+                            )
                             return None
-                        
+
                         html_content = await response.text()
-                        soup = BeautifulSoup(html_content, 'html.parser')
+                        soup = BeautifulSoup(html_content, "html.parser")
                 except asyncio.TimeoutError:
-                    logging.warning(f"⏱️ Last.fm search timeout after {timeout}s: {artist_name}")
+                    logging.warning(
+                        f"⏱️ Last.fm search timeout after {timeout}s: {artist_name}"
+                    )
                     return None
-                
+
                 # Store all found image candidates with their scores
                 found_images = []
-                
+
                 # Look for the grid items in the artist search results
                 # These are the main artist cards in the search results
-                grid_items = soup.select('div.grid-items-item')
-                
+                grid_items = soup.select("div.grid-items-item")
+
                 # Process each artist grid item
                 for i, item in enumerate(grid_items):
                     # Get artist name for comparison
-                    name_elem = item.select_one('.grid-items-item-main-text')
+                    name_elem = item.select_one(".grid-items-item-main-text")
                     result_name = name_elem.text.strip() if name_elem else "Unknown"
-                    
+
                     # Find the image
-                    img_elem = item.select_one('.grid-items-item-image img')
-                    if img_elem and img_elem.get('src'):
-                        img_url = img_elem['src']
-                        
+                    img_elem = item.select_one(".grid-items-item-image img")
+                    if img_elem and img_elem.get("src"):
+                        img_url = img_elem["src"]
+
                         # Skip placeholder images
                         if self._is_valid_image_url(img_url):
                             img_url = self._ensure_absolute_url(img_url)
-                            
+
                             # Calculate match score - position and name similarity
                             # First position gets higher score, exact name match gets bonus
                             match_score = 1.0 / (i + 1)  # Position score
-                            
+
                             # Exact name match gets a big bonus
                             if result_name.lower() == artist_name.lower():
                                 match_score += 10.0
                             # Partial match gets a smaller bonus
-                            elif artist_name.lower() in result_name.lower() or result_name.lower() in artist_name.lower():
+                            elif (
+                                artist_name.lower() in result_name.lower()
+                                or result_name.lower() in artist_name.lower()
+                            ):
                                 match_score += 2.0
-                            
+
                             found_images.append((img_url, match_score, result_name))
-                            logging.debug(f"Found image for '{result_name}' at position {i+1} (score: {match_score:.1f})")
-                
+                            logging.debug(
+                                f"Found image for '{result_name}' at position {i+1} (score: {match_score:.1f})"
+                            )
+
                 # If we didn't find any grid items, look for other artist result items
                 if not found_images:
-                    artist_items = soup.select('.artist-result')
+                    artist_items = soup.select(".artist-result")
                     for i, item in enumerate(artist_items):
-                        name_elem = item.select_one('.artist-name')
+                        name_elem = item.select_one(".artist-name")
                         result_name = name_elem.text.strip() if name_elem else "Unknown"
-                        
-                        img_elem = item.select_one('img')
-                        if img_elem and img_elem.get('src'):
-                            img_url = img_elem['src']
-                            
+
+                        img_elem = item.select_one("img")
+                        if img_elem and img_elem.get("src"):
+                            img_url = img_elem["src"]
+
                             if self._is_valid_image_url(img_url):
                                 img_url = self._ensure_absolute_url(img_url)
                                 match_score = 1.0 / (i + 1)
-                                
+
                                 if result_name.lower() == artist_name.lower():
                                     match_score += 5.0
-                                
+
                                 found_images.append((img_url, match_score, result_name))
-                
+
                 # Sort all found images by match score (higher is better)
                 found_images.sort(key=lambda x: x[1], reverse=True)
-                
+
                 # Return the best match if we found any
                 if found_images:
                     best_image, score, found_name = found_images[0]
-                    logging.info(f"✅ Found Last.fm search image for '{found_name}' (score: {score:.1f})")
+                    logging.info(
+                        f"✅ Found Last.fm search image for '{found_name}' (score: {score:.1f})"
+                    )
                     return best_image
-            
+
             return None
-            
+
         except Exception as e:
             logging.error(f"💥 Error scraping Last.fm artist search: {e}")
             return None
-            
+
     def _is_valid_image_url(self, url: str) -> bool:
         """Check if an image URL is valid (not a placeholder).
-        
+
         Args:
             url: Image URL to check
-            
+
         Returns:
             True if the URL is valid, False if it's a placeholder
         """
@@ -661,37 +684,39 @@ class ResearchManager:
             "/noimage",
             "/star",
             "/avatar/",
-            "default_artist_"
+            "default_artist_",
         ]
-        
+
         # Check that URL is not empty and doesn't match any placeholder patterns
         if not url or url == "":
             return False
-            
+
         for pattern in placeholder_patterns:
             if pattern in url:
                 return False
-                
+
         return True
-        
+
     def _ensure_absolute_url(self, url: str) -> str:
         """Make sure URL is absolute by adding domain if necessary.
         Also tries to get larger version of the image when possible.
-        
+
         Args:
             url: Image URL (possibly relative)
-            
+
         Returns:
             Absolute URL with largest image version available
         """
         # First make the URL absolute
-        if url.startswith(('http://', 'https://')):
+        if url.startswith(("http://", "https://")):
             absolute_url = url
-        elif url.startswith('//'):
+        elif url.startswith("//"):
             absolute_url = f"https:{url}"
         else:
-            absolute_url = f"https://www.last.fm{url if url.startswith('/') else '/' + url}"
-        
+            absolute_url = (
+                f"https://www.last.fm{url if url.startswith('/') else '/' + url}"
+            )
+
         # Now try to get larger image version if available
         # Last.fm usually has images like:
         # https://lastfm.freetls.fastly.net/i/u/34s/2a96cbd8b46e442fc41c2b86b821562f.jpg
@@ -700,82 +725,82 @@ class ResearchManager:
         # 174s: 174x174
         # 64s: 64x64
         # 34s: 34x34
-        
+
         # Try to replace size portion with larger size
         try:
-            if '/i/u/' in absolute_url:
+            if "/i/u/" in absolute_url:
                 # Find size pattern like /i/u/34s/ and replace with larger version
-                size_patterns = ['34s', '64s', '174s']
+                size_patterns = ["34s", "64s", "174s"]
                 for pattern in size_patterns:
-                    if f'/i/u/{pattern}/' in absolute_url:
+                    if f"/i/u/{pattern}/" in absolute_url:
                         # Replace with 300x300 (largest standard size)
-                        return absolute_url.replace(f'/i/u/{pattern}/', '/i/u/300x300/')
-                        
+                        return absolute_url.replace(f"/i/u/{pattern}/", "/i/u/300x300/")
+
                 # If we reach here, no standard size found, check for other patterns
-                if '/i/u/avatar' in absolute_url:
+                if "/i/u/avatar" in absolute_url:
                     # Avatar images have larger versions too
-                    return absolute_url.replace('/i/u/avatar', '/i/u/300x300')
+                    return absolute_url.replace("/i/u/avatar", "/i/u/300x300")
         except Exception:
             # If any error processing URL, just return the original absolute URL
             pass
-            
+
         # Return original absolute URL if no larger version found
         return absolute_url
-    
+
     async def _scrape_lastfm_artist_albums(self, artist_name: str) -> Optional[str]:
         """Scrape artist's album covers from Last.fm as a fallback.
-        
+
         Args:
             artist_name: Name of the artist to search for
-            
+
         Returns:
             URL of album cover image if found, None otherwise
         """
         try:
             # Build the URL for artist's albums page
-            encoded_artist = quote(artist_name.replace(' ', '+'))
+            encoded_artist = quote(artist_name.replace(" ", "+"))
             albums_url = f"https://www.last.fm/music/{encoded_artist}/+albums"
-            
+
             logging.debug(f"🔍 Scraping Last.fm albums for artist: '{artist_name}'")
-            
+
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
-            
+
             # Get timeout from network config or use default
             timeout = (
-                self.network_config.get_aiohttp_timeout() 
-                if self.network_config 
+                self.network_config.get_aiohttp_timeout()
+                if self.network_config
                 else 10.0
             )
-            
+
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.get(
-                        albums_url, 
-                        headers=headers, 
-                        timeout=timeout
+                        albums_url, headers=headers, timeout=timeout
                     ) as response:
                         if response.status != 200:
                             return None
-                        
+
                         html_content = await response.text()
-                        soup = BeautifulSoup(html_content, 'html.parser')
+                        soup = BeautifulSoup(html_content, "html.parser")
                 except asyncio.TimeoutError:
-                    logging.warning(f"⏱️ Last.fm albums timeout after {timeout}s: {artist_name}")
+                    logging.warning(
+                        f"⏱️ Last.fm albums timeout after {timeout}s: {artist_name}"
+                    )
                     return None
-                
+
                 # Look for album covers
-                album_images = soup.select('.cover-art img')
-                
+                album_images = soup.select(".cover-art img")
+
                 for img in album_images:
-                    if img.get('src') and self._is_valid_image_url(img['src']):
-                        img_url = self._ensure_absolute_url(img['src'])
+                    if img.get("src") and self._is_valid_image_url(img["src"]):
+                        img_url = self._ensure_absolute_url(img["src"])
                         logging.info(f"✅ Found album cover image for {artist_name}")
                         return img_url
-            
+
             return None
-                
+
         except Exception as e:
             logging.error(f"💥 Error scraping Last.fm album covers: {e}")
             return None
@@ -922,12 +947,16 @@ class ResearchManager:
                     # Only include fields relevant for website display
                     # Format image path for web server like playlist.json does
                     image_filename = result[1]
-                    image_path = f"/player/artists/{image_filename}" if image_filename else None
-                    
+                    image_path = (
+                        f"/player/publish/artists/{image_filename}"
+                        if image_filename
+                        else None
+                    )
+
                     research_data = {
                         "artist": artist,
                         "research": result[0],
-                        "image": image_path
+                        "image": image_path,
                     }
 
                     # Write to JSON file
@@ -967,17 +996,25 @@ class ResearchManager:
         self.min_image_height = self.config.getint(
             "artist_research", "min_image_height", fallback=500
         )
-        
+
         # Retry configuration
-        self.max_retries = self.config.getint("artist_research", "max_retries", fallback=3)
-        self.retry_delay = self.config.getint("artist_research", "retry_delay", fallback=1)
-        
+        self.max_retries = self.config.getint(
+            "artist_research", "max_retries", fallback=3
+        )
+        self.retry_delay = self.config.getint(
+            "artist_research", "retry_delay", fallback=1
+        )
+
         # Cache configuration
-        cache_max_age_days = self.config.getint("artist_research", "cache_max_age", fallback=30)
+        cache_max_age_days = self.config.getint(
+            "artist_research", "cache_max_age", fallback=30
+        )
         self.cache_max_age = timedelta(days=cache_max_age_days)
-        
+
         # Cache cleanup configuration
-        cleanup_interval_days = self.config.getint("artist_research", "cleanup_interval", fallback=7)
+        cleanup_interval_days = self.config.getint(
+            "artist_research", "cleanup_interval", fallback=7
+        )
         self.cleanup_interval = timedelta(days=cleanup_interval_days)
 
         # Run cache cleanup after config reload
