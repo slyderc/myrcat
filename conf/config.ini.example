@@ -4,6 +4,15 @@ log_file = log/myrcat.log
 database_path = myrcat.db
 publish_delay = 45
 
+[network]
+# Network operation settings
+connection_timeout = 10      # Seconds to wait for connections
+socket_timeout = 5           # Seconds to wait for socket operations
+max_retries = 3              # Default maximum retry count
+retry_delay = 2              # Seconds between retries
+jitter_factor = 0.1          # Random jitter factor to add to delay (0.0-1.0)
+backoff_factor = 2.0         # Exponential backoff multiplier
+
 [server]
 host = 192.168.123.106
 port = 8080
