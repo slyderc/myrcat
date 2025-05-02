@@ -52,6 +52,10 @@ test/
 backup/
 reports/
 temp/*
+docs/Facebook_*
+docs/REFACTORING.md
+!docs/
+!docs/**
 utils/*.ini
 test.sh
 dev.ini
