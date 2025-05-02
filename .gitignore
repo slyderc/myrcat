@@ -1,9 +1,13 @@
-# Python
+#######################################
+# 🐍 Python Artifacts
+#######################################
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Packaging
 build/
 develop-eggs/
 dist/
@@ -19,46 +23,85 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.git
-CLAUDE.md
 
-# Virtual Environment
+#######################################
+# 🧪 Virtual Environments
+#######################################
 venv/
 env/
 ENV/
 
-# VSCode
+#######################################
+# 💻 IDEs and Editor Settings
+#######################################
+# VSCode settings (allow project-specific configs)
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
-.vscode/
+
+# Other editor/extension folders
 .codegpt/
 
-# Project specific
-*.db
-*.log
+#######################################
+# 🔧 Environment, Logs, and Databases
+#######################################
 .env
+*.log
+*.db
 *.swp
+
+#######################################
+# 📁 Project-Specific Files & Directories
+#######################################
 playlist.json
+test.sh
+dev.ini
+config.ini
+skip_artists.txt
+skip_titles.txt
+utils/*.ini
+
+# Ignore all PNG files in the artists directory
+artists/*.png
+# Keep the .gitkeep file so the directory structure is preserved
+!artists/.gitkeep
+
+# Folders of generated or local-use content
 incoming/
 publish/
-templates/prompts/*.txt
-templates/social/*.png
-templates/fonts/*.ttf
-templates/artwork/*.png
-artists/*
 test/
 backup/
 reports/
 temp/*
-docs/Facebook_*
+
+# Fonts, prompts, and artwork used for templating
+templates/prompts/*.txt
+templates/social/*.png
+templates/fonts/*.ttf
+templates/artwork/*.png
+
+#######################################
+# 📚 Documentation Rules
+#######################################
+# Include docs folder and all content
 !docs/
 !docs/**
+# But specifically ignore these docs
+docs/Facebook_*
 docs/REFACTORING.md
-utils/*.ini
-test.sh
-dev.ini
-skip_artists.txt
-skip_titles.txt
-config.ini
+
+#######################################
+# 🧹 OS and Editor-Specific Trash
+#######################################
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swo
+
+#######################################
+# 🤖 Miscellaneous
+#######################################
+# Remove CLAUDE.md unless needed
+CLAUDE.md
